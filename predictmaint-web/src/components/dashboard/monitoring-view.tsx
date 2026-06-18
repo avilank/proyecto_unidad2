@@ -62,6 +62,12 @@ const FLOW_STEPS = [
   },
 ];
 
+const CARD_BG_FAULT = 'rgba(245, 158, 11, 0.06)';
+const CARD_BORDER_FAULT = 'rgba(245, 158, 11, 0.35)';
+const CARD_BORDER_OK = 'rgba(255, 255, 255, 0.12)';
+const METRIC_BG_FAULT = 'rgba(245, 158, 11, 0.1)';
+const METRIC_BG_NEUTRAL = 'rgba(255, 255, 255, 0.025)';
+
 export function MonitoringView() {
   const stream = useMonitoringStream();
   const machines = useMachines({ poll: false });
@@ -183,7 +189,7 @@ export function MonitoringView() {
         <span className="text-success">{sinIncidenciaHoy} sin incidencia</span>
       </p>
 
-      <p className="rounded-lg border border-accent/30 bg-accent/5 px-4 py-2 text-xs text-ink-soft">
+      <p className="rounded-lg  bg-accent/5 px-4 py-2 text-xs text-ink-soft">
         Próximo mensaje automático:{' '}
         {dispatch.data ? (
           <>
@@ -403,41 +409,23 @@ function MachineLiveCard({
   const wear = machine.kpis?.toolWear ?? machine.desgasteActual;
   const note = buildAlertNote(machine, alert);
   const readingKey = machine.ultimaLectura?.capturadoEn ?? String(readingTick);
-  const [cardPulse, setCardPulse] = useState(false);
-  const prevReadingKey = useRef(readingKey);
-
-  useEffect(() => {
-    if (prevReadingKey.current !== readingKey && machine.ultimaLectura) {
-      setCardPulse(true);
-      const t = setTimeout(() => setCardPulse(false), 800);
-      prevReadingKey.current = readingKey;
-      return () => clearTimeout(t);
-    }
-    prevReadingKey.current = readingKey;
-  }, [readingKey, machine.ultimaLectura]);
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-xl border bg-gradient-to-br from-surface to-surface-2 p-4 transition-shadow duration-300 animate-slide-in-left ${
-        fault
-          ? 'border-warning/60 shadow-[0_0_20px_rgba(245,158,11,0.12)]'
-          : 'border-accent/20 hover:border-accent/40'
-      } ${cardPulse ? 'animate-border-pulse' : ''}`}
-      style={{ animationDelay: `${index * 100}ms` }}
+      className="group relative overflow-hidden rounded-xl p-4 mt-6 transition-colors duration-300 animate-slide-in-left"
+      style={{
+        animationDelay: `${index * 100}ms`,
+        border: `1px solid ${fault ? CARD_BORDER_FAULT : CARD_BORDER_OK}`,
+        ...(fault ? { backgroundColor: CARD_BG_FAULT } : {}),
+      }}
     >
-      <div
-        className={`pointer-events-none absolute inset-y-0 left-0 w-1 transition-colors duration-500 ${
-          fault ? 'bg-warning' : 'bg-accent'
-        } ${cardPulse ? 'opacity-100' : 'opacity-70'}`}
-      />
-
-      <div className="flex flex-wrap items-start justify-between gap-3 pl-2">
+      <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <div className="flex items-center gap-2">
             <span className="font-mono text-lg font-bold tracking-tight text-ink">
               {machine.id}
             </span>
-            <span className="rounded-md bg-surface-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
+            <span className="rounded-md bg-black/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
               Tipo {machine.tipo}
             </span>
           </div>
@@ -446,29 +434,32 @@ function MachineLiveCard({
         <MachineAlertBadge alert={alert} />
       </div>
 
-      <div className="mt-4 grid grid-cols-3 gap-2 pl-2">
+      <div className="mt-1 grid grid-cols-3 gap-2">
         <LiveMetric
           label="RPM"
           value={rpm}
           format={(v) => v.toLocaleString('es-PE', { maximumFractionDigits: 0 })}
           readingKey={readingKey}
+          fault={fault}
         />
         <LiveMetric
           label="Torque"
           value={torque}
           format={(v) => `${v.toFixed(1)} Nm`}
           readingKey={readingKey}
+          fault={fault}
         />
         <LiveMetric
           label="Desgaste"
           value={wear}
           format={(v) => `${v} min`}
           readingKey={readingKey}
+          fault={fault}
         />
       </div>
 
       {alert?.tecnico && (
-        <div className="mt-3 flex items-center gap-2 pl-2">
+        <div className="mt-1 flex items-center gap-2">
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-warning/20 text-xs font-bold text-warning">
             {alert.tecnico.iniciales}
           </span>
@@ -482,9 +473,13 @@ function MachineLiveCard({
             ? `/dashboard/analysis/${machine.id}?order=${alert.ordenId ?? alert.orderId}`
             : `/dashboard/analysis/${machine.id}`
         }
-        className="mt-4 inline-block pl-2"
+        className="mt-1 inline-block"
       >
-        <Button variant={fault ? 'warning' : 'secondary'} size="sm">
+        <Button
+          variant={fault ? 'warning' : 'ghost'}
+          size="sm"
+          className={fault ? undefined : 'bg-black/15 text-ink-soft hover:bg-black/25 hover:text-ink'}
+        >
           Ver análisis →
         </Button>
       </Link>
@@ -497,11 +492,13 @@ function LiveMetric({
   value,
   format,
   readingKey,
+  fault,
 }: {
   label: string;
   value?: number | null;
   format: (v: number) => string;
   readingKey: string;
+  fault?: boolean;
 }) {
   const prev = useRef<{ value?: number | null; key: string }>({ value, key: readingKey });
   const [flash, setFlash] = useState(false);
@@ -522,9 +519,14 @@ function LiveMetric({
 
   return (
     <div
-      className={`rounded-lg border border-border-soft px-3 py-2 transition-colors ${
-        flash ? 'animate-value-flash border-accent/50' : 'bg-bg/40'
-      }`}
+      className={cn('rounded-lg px-3 py-2 transition-colors', flash && 'ring-1 ring-accent/40')}
+      // style={{
+      //   backgroundColor: flash
+      //     ? 'rgba(48, 156, 228, 0.2)'
+      //     : fault
+      //       ? METRIC_BG_FAULT
+      //       : METRIC_BG_NEUTRAL,
+      // }}
     >
       <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
         {label}
