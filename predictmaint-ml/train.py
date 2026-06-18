@@ -185,11 +185,37 @@ def train() -> dict:
     return all_metrics
 
 
+def _sync_metrics_to_api() -> None:
+    root = Path(__file__).resolve().parent.parent
+    script = root / "predictmaint-api" / "scripts" / "sync-ml-metrics.js"
+    if not script.exists():
+        print("Aviso: sync-ml-metrics.js no encontrado; omitiendo sync BD")
+        return
+    env = os.environ.copy()
+    metrics_path = default_artifacts_path() / "metrics.json"
+    env["ML_METRICS_PATH"] = str(metrics_path)
+    print(f"\nSincronizando métricas → modelos_ml ({metrics_path.name})…")
+    import subprocess
+
+    result = subprocess.run(
+        ["node", str(script)],
+        cwd=str(root / "predictmaint-api"),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    if result.stdout:
+        print(result.stdout.strip())
+    if result.returncode != 0:
+        print(result.stderr.strip() or "Sync BD falló (¿API/Postgres disponible?)", file=sys.stderr)
+
+
 if __name__ == "__main__":
     try:
         results = train()
         print("\nEntrenamiento completado.")
         print(json.dumps(results, indent=2))
+        _sync_metrics_to_api()
     except Exception as exc:
         print(f"Error durante entrenamiento: {exc}", file=sys.stderr)
         sys.exit(1)

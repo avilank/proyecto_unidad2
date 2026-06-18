@@ -13,6 +13,7 @@ import { PrediccionFallo } from '../database/models/prediccion-fallo.model';
 import { RecomendacionRag } from '../database/models/recomendacion-rag.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
 import { MlGatewayModule } from '../ml-gateway/ml-gateway.module';
+import { MlModelsModule } from '../ml-models/ml-models.module';
 import { AlertsModule } from '../alerts/alerts.module';
 import { MachinesModule } from '../machines/machines.module';
 import { OrdersModule } from '../orders/orders.module';
@@ -37,6 +38,7 @@ import { SensorReadingsService } from './sensor-readings.service';
       ConfiguracionAlertas,
     ]),
     MlGatewayModule,
+    MlModelsModule,
     MachinesModule,
     forwardRef(() => AlertsModule),
     forwardRef(() => OrdersModule),

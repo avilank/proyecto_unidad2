@@ -4,12 +4,15 @@ import { Op } from 'sequelize';
 import { EstadoAlerta } from '../common/enums';
 import { paginate, PaginationQueryDto } from '../common/dto/pagination.dto';
 import { findMaquinaByCodigo } from '../common/utils/maquina.util';
+import { modeloSlug } from '../common/utils/modelo-ml.util';
 import { tecnicoIniciales, tecnicoNombre } from '../common/utils/tecnico-display.util';
 import { Alerta } from '../database/models/alerta.model';
 import { AnalisisFallo } from '../database/models/analisis-fallo.model';
 import { ClasificacionFallo } from '../database/models/clasificacion-fallo.model';
 import { Maquina } from '../database/models/maquina.model';
+import { ModeloMl } from '../database/models/modelo-ml.model';
 import { Orden } from '../database/models/orden.model';
+import { PrediccionFallo } from '../database/models/prediccion-fallo.model';
 import { Tecnico } from '../database/models/tecnico.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
 import { Usuario } from '../database/models/usuario.model';
@@ -27,7 +30,10 @@ const ALERT_INCLUDES = [
   },
   {
     model: AnalisisFallo,
-    include: [{ model: ClasificacionFallo, include: [{ model: TipoFallo }] }],
+    include: [
+      { model: PrediccionFallo, include: [{ model: ModeloMl }] },
+      { model: ClasificacionFallo, include: [{ model: TipoFallo }, { model: ModeloMl }] },
+    ],
   },
   { model: Maquina },
 ];
@@ -39,8 +45,15 @@ export class AlertsService {
   ) {}
 
   toResponse(a: Alerta) {
-    const lider = a.analisis?.clasificaciones?.find((c) => c.esLider);
-    const tipoFallo = lider?.tipoFallo?.codigo ?? null;
+    const liderS2 = a.analisis?.clasificaciones?.find((c) => c.esLider);
+    const liderS1 = a.analisis?.predicciones?.find((p) => p.esLider);
+    const tipoFallo = liderS2?.tipoFallo?.codigo ?? null;
+    const confianzaLider =
+      liderS1?.probabilidad != null
+        ? Number(liderS1.probabilidad) / 100
+        : a.analisis?.ensembleAvg != null
+          ? Number(a.analisis.ensembleAvg)
+          : null;
 
     return {
       id: a.codigo,
@@ -50,8 +63,16 @@ export class AlertsService {
       nivel: a.nivelRiesgo,
       reglaCodigo: a.reglaDisparada ?? null,
       tipoFallo,
-      ensembleAvg:
-        a.analisis?.ensembleAvg != null ? Number(a.analisis.ensembleAvg) : null,
+      modeloPrediccion: liderS1?.modeloMl
+        ? modeloSlug(liderS1.modeloMl, 'xgboost')
+        : null,
+      confianzaPrediccion:
+        liderS1?.probabilidad != null ? Number(liderS1.probabilidad) : null,
+      modeloClasificacion: liderS2?.modeloMl
+        ? modeloSlug(liderS2.modeloMl, 'lightgbm')
+        : null,
+      confianzaLider,
+      ensembleAvg: confianzaLider,
       tecnicoId: a.idTecnico ?? null,
       tecnico: a.tecnico
         ? {

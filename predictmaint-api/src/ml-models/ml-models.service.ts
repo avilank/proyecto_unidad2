@@ -1,11 +1,37 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { EtapaModelo } from '../common/enums';
 import { ModeloMl } from '../database/models/modelo-ml.model';
+import {
+  defaultMetricsPath,
+  syncMetricsToCatalog,
+  s1CatalogPatch,
+  s2CatalogPatch,
+  type MlBinaryMetricsPayload,
+  type MlMulticlassMetricsPayload,
+} from './ml-metrics-sync';
 
 @Injectable()
 export class MlModelsService {
+  private readonly logger = new Logger(MlModelsService.name);
+
   constructor(@InjectModel(ModeloMl) private readonly modeloModel: typeof ModeloMl) {}
+
+  async syncMetricsFromArtifacts(filePath = defaultMetricsPath()): Promise<number> {
+    const updated = await syncMetricsToCatalog(this.modeloModel, filePath);
+    if (updated > 0) {
+      this.logger.log(`Métricas ML sincronizadas (${updated} modelos) desde ${filePath}`);
+    }
+    return updated;
+  }
+
+  async applyRuntimeS1Metrics(idModelo: number, metrics: MlBinaryMetricsPayload): Promise<void> {
+    await this.modeloModel.update(s1CatalogPatch(metrics), { where: { idModelo } });
+  }
+
+  async applyRuntimeS2Metrics(idModelo: number, metrics: MlMulticlassMetricsPayload): Promise<void> {
+    await this.modeloModel.update(s2CatalogPatch(metrics), { where: { idModelo } });
+  }
 
   toResponse(m: ModeloMl) {
     return {
@@ -22,6 +48,10 @@ export class MlModelsService {
             : null,
       activo: m.esDefault,
       descripcion: m.version ?? null,
+      tn: m.tn ?? null,
+      fp: m.fp ?? null,
+      fn: m.fn ?? null,
+      tp: m.tp ?? null,
     };
   }
 

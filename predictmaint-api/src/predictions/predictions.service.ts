@@ -15,6 +15,11 @@ import { Orden } from '../database/models/orden.model';
 import { PrediccionFallo } from '../database/models/prediccion-fallo.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
 import { MlGatewayService } from '../ml-gateway/ml-gateway.service';
+import { MlModelsService } from '../ml-models/ml-models.service';
+import {
+  s1PredictionPatch,
+  s2PredictionPatch,
+} from '../ml-models/ml-metrics-sync';
 
 @Injectable()
 export class PredictionsService {
@@ -25,6 +30,7 @@ export class PredictionsService {
     @InjectModel(LecturaSensor) private readonly lecturaModel: typeof LecturaSensor,
     @InjectModel(AnalisisFallo) private readonly analisisModel: typeof AnalisisFallo,
     private readonly mlGateway: MlGatewayService,
+    private readonly mlModelsService: MlModelsService,
   ) {}
 
   private async getOrderContext(orderCodigo: string) {
@@ -37,24 +43,26 @@ export class PredictionsService {
   }
 
   private binToResponse(p: PrediccionFallo) {
+    const num = (v: unknown) => (v != null ? Number(v) : null);
     return {
       modelo: modeloSlug(p.modeloMl, 'xgboost') as ModeloBinario,
       prediccion: p.prediccion,
       probabilidad: Number(p.probabilidad),
-      accuracy: p.modeloMl?.accuracy != null ? Number(p.modeloMl.accuracy) : null,
-      rocAuc: p.modeloMl?.rocAuc != null ? Number(p.modeloMl.rocAuc) : null,
-      precision: p.modeloMl?.precisionScore != null ? Number(p.modeloMl.precisionScore) : null,
-      recall: p.modeloMl?.recallScore != null ? Number(p.modeloMl.recallScore) : null,
-      f1Score: p.modeloMl?.f1Score != null ? Number(p.modeloMl.f1Score) : null,
-      tn: p.tn ?? null,
-      fp: p.fp ?? null,
-      fn: p.fn ?? null,
-      tp: p.tp ?? null,
+      accuracy: num(p.accuracy) ?? num(p.modeloMl?.accuracy),
+      rocAuc: num(p.rocAuc) ?? num(p.modeloMl?.rocAuc),
+      precision: num(p.precisionScore) ?? num(p.modeloMl?.precisionScore),
+      recall: num(p.recallScore) ?? num(p.modeloMl?.recallScore),
+      f1Score: num(p.f1Score) ?? num(p.modeloMl?.f1Score),
+      tn: p.tn ?? p.modeloMl?.tn ?? null,
+      fp: p.fp ?? p.modeloMl?.fp ?? null,
+      fn: p.fn ?? p.modeloMl?.fn ?? null,
+      tp: p.tp ?? p.modeloMl?.tp ?? null,
       esLider: p.esLider,
     };
   }
 
   private multiToResponse(c: ClasificacionFallo) {
+    const num = (v: unknown) => (v != null ? Number(v) : null);
     return {
       modelo: modeloSlug(c.modeloMl, 'lightgbm') as ModeloMulticlase,
       tipoPredicho: c.tipoFallo?.codigo ?? null,
@@ -63,13 +71,13 @@ export class PredictionsService {
       probTwf: c.probTwf != null ? Number(c.probTwf) : null,
       probOsf: c.probOsf != null ? Number(c.probOsf) : null,
       probRnf: c.probRnf != null ? Number(c.probRnf) : null,
-      f1Macro: c.modeloMl?.f1Score != null ? Number(c.modeloMl.f1Score) : null,
-      f1Weighted: null,
-      accuracy: c.modeloMl?.accuracy != null ? Number(c.modeloMl.accuracy) : null,
-      tp: null,
-      fn: null,
-      fp: null,
-      tn: null,
+      f1Macro: num(c.metricF1Macro) ?? num(c.modeloMl?.f1Score),
+      f1Weighted: num(c.metricF1Weighted) ?? num(c.modeloMl?.f1Weighted),
+      accuracy: num(c.metricAccuracy) ?? num(c.modeloMl?.accuracy),
+      tp: c.metricTp ?? c.modeloMl?.tp ?? null,
+      fn: c.metricFn ?? c.modeloMl?.fn ?? null,
+      fp: c.metricFp ?? c.modeloMl?.fp ?? null,
+      tn: c.metricTn ?? c.modeloMl?.tn ?? null,
       esLider: c.esLider,
       diverge: c.diverge,
     };
@@ -82,12 +90,17 @@ export class PredictionsService {
       include: [{ model: ModeloMl }],
     });
     const lider = preds.find((p) => p.esLider);
+    const confianzaLider =
+      lider?.probabilidad != null
+        ? Number(lider.probabilidad) / 100
+        : orden.analisis!.ensembleAvg != null
+          ? Number(orden.analisis!.ensembleAvg)
+          : null;
     return {
       items: preds.map((p) => this.binToResponse(p)),
-      ensembleAvg:
-        orden.analisis!.ensembleAvg != null
-          ? Number(orden.analisis!.ensembleAvg)
-          : null,
+      modeloLider: lider ? modeloSlug(lider.modeloMl, 'xgboost') : null,
+      confianzaLider,
+      ensembleAvg: confianzaLider,
       nivelRiesgo: orden.analisis!.nivelRiesgo,
       consenso: lider?.prediccion ?? preds[0]?.prediccion ?? null,
     };
@@ -107,6 +120,7 @@ export class PredictionsService {
       agreement >= 3 ? 'ALTO' : agreement >= 2 ? 'MEDIO' : 'BAJO';
     return {
       items: preds.map((p) => this.multiToResponse(p)),
+      modeloLider: lider ? modeloSlug(lider.modeloMl, 'lightgbm') : null,
       tipoPredicho: lider?.tipoFallo?.codigo ?? null,
       agreement: agreementLabel,
       confianza: lider?.confianza != null ? Number(lider.confianza) : null,
@@ -132,6 +146,7 @@ export class PredictionsService {
       const result = await this.mlGateway.predict(features);
       for (const m of result.modelos) {
         const idModelo = await resolveModeloId(m.modelo, 'S1');
+        await this.mlModelsService.applyRuntimeS1Metrics(idModelo, m);
         await this.prediccionModel.create({
           idAnalisis: orden.idAnalisis,
           idModelo,
@@ -139,14 +154,14 @@ export class PredictionsService {
           probabilidad: m.probabilidad,
           confianza: m.probabilidad,
           esLider: m.esLider ?? false,
-          tn: m.tn,
-          fp: m.fp,
-          fn: m.fn,
-          tp: m.tp,
+          ...s1PredictionPatch(m),
         });
       }
       await this.analisisModel.update(
-        { ensembleAvg: result.ensembleAvg, nivelRiesgo: result.nivelRiesgo },
+        {
+          ensembleAvg: result.confianzaLider ?? result.ensembleAvg,
+          nivelRiesgo: result.nivelRiesgo,
+        },
         { where: { idAnalisis: orden.idAnalisis } },
       );
       return this.getBinary(orderCodigo);
@@ -156,6 +171,7 @@ export class PredictionsService {
     const result = await this.mlGateway.classify(features);
     for (const m of result.modelos) {
       const idModelo = await resolveModeloId(m.modelo, 'S2');
+      await this.mlModelsService.applyRuntimeS2Metrics(idModelo, m);
       const tipo = await TipoFallo.findOne({ where: { codigo: m.tipoPredicho } });
       if (!tipo) continue;
       await this.clasificacionModel.create({
@@ -171,6 +187,7 @@ export class PredictionsService {
         esLider: m.esLider ?? false,
         diverge: m.diverge ?? false,
         fechaClasificacion: new Date(),
+        ...s2PredictionPatch(m),
       });
     }
     return this.getMulticlass(orderCodigo);

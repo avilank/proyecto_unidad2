@@ -19,6 +19,7 @@ import { LecturaSensor } from '../database/models/lectura-sensor.model';
 import { Maquina } from '../database/models/maquina.model';
 import { ModeloMl } from '../database/models/modelo-ml.model';
 import { Orden } from '../database/models/orden.model';
+import { PrediccionFallo } from '../database/models/prediccion-fallo.model';
 import { SolucionAplicada } from '../database/models/solucion-aplicada.model';
 import { Tecnico } from '../database/models/tecnico.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
@@ -44,6 +45,7 @@ const ORDER_INCLUDES_BASE = [
     model: AnalisisFallo,
     include: [
       { model: LecturaSensor, include: [{ model: Maquina }] },
+      { model: PrediccionFallo, include: [{ model: ModeloMl }] },
       {
         model: ClasificacionFallo,
         include: [{ model: TipoFallo }, { model: ModeloMl }],
@@ -91,20 +93,35 @@ export class OrdersService {
 
   toResponse(o: Orden) {
     const analisis = o.analisis;
-    const lider = analisis?.clasificaciones?.find((c) => c.esLider);
+    const liderS2 = analisis?.clasificaciones?.find((c) => c.esLider);
+    const liderS1 = analisis?.predicciones?.find((p) => p.esLider);
     const ultimaSolucion = o.soluciones?.[o.soluciones.length - 1];
+    const confianzaLider =
+      liderS1?.probabilidad != null
+        ? Number(liderS1.probabilidad) / 100
+        : analisis?.ensembleAvg != null
+          ? Number(analisis.ensembleAvg)
+          : null;
 
     return {
       id: o.codigo,
       maquinaId: o.maquina?.codigo ?? String(o.idMaquina),
       lecturaId: analisis?.idLectura != null ? Number(analisis.idLectura) : null,
-      tipoFallo: lider?.tipoFallo?.codigo ?? null,
-      algoritmoClasificador: lider?.modeloMl
-        ? modeloSlug(lider.modeloMl, lider.modeloMl.nombre)
+      tipoFallo: liderS2?.tipoFallo?.codigo ?? null,
+      modeloPrediccion: liderS1?.modeloMl
+        ? modeloSlug(liderS1.modeloMl, 'xgboost')
         : null,
-      confianza: lider?.confianza != null ? Number(lider.confianza) : null,
-      ensembleAvg:
-        analisis?.ensembleAvg != null ? Number(analisis.ensembleAvg) : null,
+      confianzaPrediccion:
+        liderS1?.probabilidad != null ? Number(liderS1.probabilidad) : null,
+      algoritmoClasificador: liderS2?.modeloMl
+        ? modeloSlug(liderS2.modeloMl, liderS2.modeloMl.nombre)
+        : null,
+      modeloClasificacion: liderS2?.modeloMl
+        ? modeloSlug(liderS2.modeloMl, liderS2.modeloMl.nombre)
+        : null,
+      confianza: liderS2?.confianza != null ? Number(liderS2.confianza) : null,
+      confianzaLider,
+      ensembleAvg: confianzaLider,
       nivelRiesgo: analisis?.nivelRiesgo ?? 'MEDIUM',
       tecnicoId: o.idTecnico ?? null,
       estado: o.estado,

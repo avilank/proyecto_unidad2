@@ -57,6 +57,27 @@ export class ClasificacionFallo extends Model {
   @Column({ type: DataType.BOOLEAN, defaultValue: false })
   declare diverge: boolean;
 
+  @Column(DataType.DECIMAL(5, 2))
+  declare metricAccuracy?: number;
+
+  @Column(DataType.DECIMAL(5, 3))
+  declare metricF1Macro?: number;
+
+  @Column(DataType.DECIMAL(5, 3))
+  declare metricF1Weighted?: number;
+
+  @Column(DataType.INTEGER)
+  declare metricTp?: number;
+
+  @Column(DataType.INTEGER)
+  declare metricFn?: number;
+
+  @Column(DataType.INTEGER)
+  declare metricFp?: number;
+
+  @Column(DataType.INTEGER)
+  declare metricTn?: number;
+
   @Column({ type: DataType.DATE, allowNull: false, defaultValue: DataType.NOW })
   declare fechaClasificacion: Date;
 

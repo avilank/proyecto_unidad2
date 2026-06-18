@@ -143,9 +143,13 @@ function RecentAlertsTable({
         },
         {
           key: 'conf',
-          header: 'Confianza',
-          render: (r) =>
-            r.ensembleAvg != null ? `${(Number(r.ensembleAvg) * 100).toFixed(1)}%` : '—',
+          header: 'Confianza S-1',
+          render: (r) => {
+            if (r.confianzaPrediccion != null) return `${r.confianzaPrediccion.toFixed(1)}%`;
+            if (r.confianzaLider != null) return `${(Number(r.confianzaLider) * 100).toFixed(1)}%`;
+            if (r.ensembleAvg != null) return `${(Number(r.ensembleAvg) * 100).toFixed(1)}%`;
+            return '—';
+          },
         },
         {
           key: 'hora',

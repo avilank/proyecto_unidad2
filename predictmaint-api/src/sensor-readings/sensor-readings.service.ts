@@ -41,6 +41,11 @@ import { PrediccionFallo } from '../database/models/prediccion-fallo.model';
 import { RecomendacionRag } from '../database/models/recomendacion-rag.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
 import { MlGatewayService, MlPredictFeatures } from '../ml-gateway/ml-gateway.service';
+import { MlModelsService } from '../ml-models/ml-models.service';
+import {
+  s1PredictionPatch,
+  s2PredictionPatch,
+} from '../ml-models/ml-metrics-sync';
 import { AlertsService } from '../alerts/alerts.service';
 import { MachinesService } from '../machines/machines.service';
 import { OrdersService } from '../orders/orders.service';
@@ -63,6 +68,7 @@ export class SensorReadingsService {
     @InjectModel(TipoFallo) private readonly tipoFalloModel: typeof TipoFallo,
     @InjectModel(ConfiguracionAlertas) private readonly configAlertasModel: typeof ConfiguracionAlertas,
     private readonly mlGateway: MlGatewayService,
+    private readonly mlModelsService: MlModelsService,
     private readonly machinesService: MachinesService,
     private readonly alertsService: AlertsService,
     private readonly ordersService: OrdersService,
@@ -338,9 +344,12 @@ export class SensorReadingsService {
 
     const predictResult = await this.mlGateway.predict(features);
     const nivelRiesgo = (predictResult.nivelRiesgo as NivelRiesgo) ?? NivelRiesgo.MEDIUM;
+    const scoreLider = predictResult.confianzaLider ?? predictResult.ensembleAvg;
+    const liderS1 = predictResult.modelos.find((m) => m.esLider);
 
     for (const m of predictResult.modelos) {
       const idModelo = await resolveModeloId(m.modelo, 'S1');
+      await this.mlModelsService.applyRuntimeS1Metrics(idModelo, m);
       await this.prediccionModel.create({
         idAnalisis: analisis.idAnalisis,
         idModelo,
@@ -348,22 +357,19 @@ export class SensorReadingsService {
         probabilidad: m.probabilidad,
         confianza: m.probabilidad,
         esLider: m.esLider ?? false,
-        tn: m.tn,
-        fp: m.fp,
-        fn: m.fn,
-        tp: m.tp,
+        ...s1PredictionPatch(m),
       });
     }
 
     await analisis.update({
-      ensembleAvg: predictResult.ensembleAvg,
+      ensembleAvg: scoreLider,
       nivelRiesgo,
-      prediccion: predictResult.modelos.find((m) => m.esLider)?.prediccion,
+      prediccion: liderS1?.prediccion,
     });
     await alert.update({ nivelRiesgo, estado: EstadoAlerta.ANALIZANDO });
 
     const umbral = await this.getUmbralFalla();
-    const s1Falla = predictResult.ensembleAvg >= umbral;
+    const s1Falla = scoreLider >= umbral;
 
     let tipoFalloFinal = triggered.tipoFallo;
     let tecnico = null;
@@ -387,6 +393,7 @@ export class SensorReadingsService {
 
       for (const m of classifyResult.modelos) {
         const idModelo = await resolveModeloId(m.modelo, 'S2');
+        await this.mlModelsService.applyRuntimeS2Metrics(idModelo, m);
         const tipoModelo = await this.tipoFalloModel.findOne({
           where: { codigo: m.tipoPredicho },
         });
@@ -404,6 +411,7 @@ export class SensorReadingsService {
           esLider: m.esLider ?? false,
           diverge: m.diverge ?? false,
           fechaClasificacion: new Date(),
+          ...s2PredictionPatch(m),
         });
       }
 

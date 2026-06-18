@@ -89,12 +89,18 @@ export function AnalysisView({
   const multiclass = useMulticlassPredictions(analysisOrder?.id ?? null);
   const rag = useRagPlan(analysisOrder?.id ?? null);
 
-  const ensembleAvg =
-    binary.data?.ensembleAvg ?? analysisOrder?.ensembleAvg ?? 0;
+  const confianzaLider =
+    binary.data?.confianzaLider ??
+    (binary.data?.ensembleAvg != null ? binary.data.ensembleAvg : null) ??
+    (analysisOrder?.confianzaLider != null ? analysisOrder.confianzaLider : null) ??
+    (analysisOrder?.ensembleAvg != null ? analysisOrder.ensembleAvg : null);
+
+  const modeloPrediccion =
+    binary.data?.modeloLider ?? analysisOrder?.modeloPrediccion ?? null;
 
   const s1Falla =
     Boolean(analysisOrder?.tipoFallo) ||
-    ensembleAvg >= UMBRAL_FALLA ||
+    (confianzaLider != null && confianzaLider >= UMBRAL_FALLA) ||
     binary.data?.consenso === 'FALLA';
 
   const s2HasData =
@@ -137,8 +143,16 @@ export function AnalysisView({
           {analysisOrder?.tipoFallo && (
             <Badge variant="danger">{analysisOrder.tipoFallo}</Badge>
           )}
-          {ensembleAvg != null && (
-            <span className="text-ink-soft">ensemble_avg: {ensembleAvg.toFixed(3)}</span>
+          {confianzaLider != null && (
+            <span className="text-ink-soft">
+              S-1: {modeloPrediccion ? `${prettyModel(modeloPrediccion)} · ` : ''}
+              {(confianzaLider * 100).toFixed(1)}%
+            </span>
+          )}
+          {multiclass.data?.modeloLider && analysisOrder?.tipoFallo && (
+            <span className="text-ink-soft">
+              S-2: {prettyModel(multiclass.data.modeloLider)} · {analysisOrder.tipoFallo}
+            </span>
           )}
           {analysisOrder?.id && <span className="text-accent">Orden: {analysisOrder.id}</span>}
           {s1Falla && analysisOrder?.tecnico && (
@@ -266,12 +280,37 @@ function PredictionTab({
   isLoading,
 }: {
   reading?: SensorReading;
-  data?: { items: BinaryPrediction[]; ensembleAvg: number | null; consenso: string | null };
+  data?: {
+    items: BinaryPrediction[];
+    modeloLider: string | null;
+    confianzaLider: number | null;
+    ensembleAvg: number | null;
+    consenso: string | null;
+  };
   isLoading?: boolean;
 }) {
   if (isLoading) return <Skeleton className="h-[380px] w-full" />;
 
+  const lider = data?.items.find((p) => p.esLider) ?? data?.items[0];
+  const confianza =
+    data?.confianzaLider ??
+    (lider?.probabilidad != null ? lider.probabilidad / 100 : null);
+
   return (
+    <div className="space-y-4">
+      {lider && (
+        <div className="rounded-md border border-accent/40 bg-accent/5 px-4 py-3 text-sm">
+          <p className="font-semibold text-ink">
+            Modelo líder S-1: {prettyModel(data?.modeloLider ?? lider.modelo)}
+          </p>
+          <p className="mt-1 text-ink-muted">
+            Predicción <strong>{lider.prediccion}</strong>
+            {confianza != null ? ` · ${(confianza * 100).toFixed(1)}% confianza` : ''}
+            {data?.consenso ? ` · decisión: ${data.consenso}` : ''}
+          </p>
+        </div>
+      )}
+
     <div className="grid gap-4 xl:grid-cols-4">
       <Card className="xl:col-span-1">
         <CardHeader>
@@ -299,7 +338,7 @@ function PredictionTab({
             label="Desgaste"
             value={reading?.toolWear != null ? `${reading.toolWear} min` : '—'}
           />
-          {data?.consenso && <Metric label="Consenso S-1" value={data.consenso} />}
+          {data?.consenso && <Metric label="Decisión S-1" value={data.consenso} />}
         </CardContent>
       </Card>
 
@@ -307,7 +346,10 @@ function PredictionTab({
         {(data?.items ?? []).map((p) => (
           <Card key={p.modelo} className={p.esLider ? 'border-accent' : undefined}>
             <CardHeader>
-              <CardTitle>{prettyModel(p.modelo)}</CardTitle>
+              <CardTitle className="flex items-center justify-between gap-2">
+                {prettyModel(p.modelo)}
+                {p.esLider && <Badge variant="accent">Líder</Badge>}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="flex items-center justify-between">
@@ -325,6 +367,7 @@ function PredictionTab({
           </Card>
         ))}
       </div>
+    </div>
     </div>
   );
 }
@@ -399,6 +442,7 @@ function ClassificationTab({
 }: {
   data?: {
     items: MulticlassPrediction[];
+    modeloLider: string | null;
     tipoPredicho: string | null;
     agreement: string;
     confianza: number | null;
@@ -409,8 +453,22 @@ function ClassificationTab({
 }) {
   if (isLoading) return <Skeleton className="h-[380px] w-full" />;
 
+  const lider = data?.items.find((m) => m.esLider);
+
   return (
     <div className="space-y-4">
+      {lider && (
+        <div className="rounded-md border border-accent/40 bg-accent/5 px-4 py-3 text-sm">
+          <p className="font-semibold text-ink">
+            Modelo líder S-2: {prettyModel(data?.modeloLider ?? lider.modelo)}
+          </p>
+          <p className="mt-1 text-ink-muted">
+            Tipo predicho <strong>{data?.tipoPredicho ?? lider.tipoPredicho ?? '—'}</strong>
+            {data?.confianza != null ? ` · ${data.confianza.toFixed(1)}% confianza` : ''}
+            {data?.agreement ? ` · agreement ${data.agreement}` : ''}
+          </p>
+        </div>
+      )}
       <div
         className={`rounded-md border px-4 py-3 text-sm ${
           tecnico
@@ -448,7 +506,10 @@ function ClassificationTab({
         </Card>
         <Card>
           <CardContent className="py-4">
-            <Metric label="Consenso" value={data?.tipoPredicho ?? '—'} />
+            <Metric
+              label="Modelo líder"
+              value={data?.modeloLider ? prettyModel(data.modeloLider) : '—'}
+            />
           </CardContent>
         </Card>
         <Card>
@@ -462,7 +523,10 @@ function ClassificationTab({
         {(data?.items ?? []).map((m) => (
           <Card key={m.modelo} className={m.esLider ? 'border-accent' : undefined}>
             <CardHeader>
-              <CardTitle>{prettyModel(m.modelo)}</CardTitle>
+              <CardTitle className="flex items-center justify-between gap-2">
+                {prettyModel(m.modelo)}
+                {m.esLider && <Badge variant="accent">Líder</Badge>}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="flex items-center justify-between">

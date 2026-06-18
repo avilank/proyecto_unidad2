@@ -39,7 +39,7 @@ const FLOW_STEPS = [
   {
     n: 2,
     title: 'S-1 ejecuta 3 modelos',
-    desc: 'Predicción binaria automática → ensemble_avg',
+    desc: 'El modelo con mayor confianza decide la predicción',
     color: 'bg-purple-500',
   },
   {
@@ -556,11 +556,21 @@ function ActiveAlertCard({ alert }: { alert: Alert }) {
       {alert.tecnico && (
         <p className="mt-1 text-xs text-ink-soft">Técnico: {alert.tecnico.nombre}</p>
       )}
-      {alert.ensembleAvg != null && (
+      {alert.confianzaLider != null && (
         <>
-          <p className="mt-2 text-2xl font-bold text-ink">{Number(alert.ensembleAvg).toFixed(3)}</p>
-          <p className="text-xs text-ink-muted">ensemble_avg</p>
+          <p className="mt-2 text-2xl font-bold text-ink">
+            {(Number(alert.confianzaLider) * 100).toFixed(1)}%
+          </p>
+          <p className="text-xs text-ink-muted">
+            Confianza S-1
+            {alert.modeloPrediccion ? ` · ${prettyModel(alert.modeloPrediccion)}` : ''}
+          </p>
         </>
+      )}
+      {alert.modeloClasificacion && alert.tipoFallo && (
+        <p className="mt-1 text-xs text-ink-soft">
+          S-2: {alert.tipoFallo} · {prettyModel(alert.modeloClasificacion)}
+        </p>
       )}
       {(alert.ordenId ?? alert.orderId) && (
         <Link
@@ -669,4 +679,16 @@ function timeAgo(iso: string): string {
   if (mins < 60) return `hace ${mins} min`;
   const hrs = Math.floor(mins / 60);
   return `hace ${hrs} h`;
+}
+
+function prettyModel(model: string) {
+  const map: Record<string, string> = {
+    xgboost: 'XGBoost',
+    random_forest: 'Random Forest',
+    regresion_logistica: 'Reg. Logística',
+    lightgbm: 'LightGBM',
+    decision_tree: 'Decision Tree',
+    svm: 'SVM',
+  };
+  return map[model] ?? model;
 }

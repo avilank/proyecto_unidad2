@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Activity,
   BarChart3,
   History,
   LayoutDashboard,
@@ -18,7 +17,6 @@ import { useSessionStore } from '@/presentation/stores/sessionStore';
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/dashboard/monitoring', label: 'Monitoreo en Tiempo Real', icon: Radio },
-  { href: '/dashboard/analysis/M-001', label: 'Análisis de Máquina', icon: Activity },
   { href: '/dashboard/orders', label: 'Historial', icon: History },
   { href: '/dashboard/technicians', label: 'Gestión de Técnicos', icon: Users },
   { href: '/dashboard/analytics', label: 'Analítica y Reportes', icon: BarChart3 },
@@ -39,6 +37,7 @@ export function Sidebar() {
         {NAV.map(({ href, label, icon: Icon }) => {
           const active =
             pathname === href ||
+            (href === '/dashboard/monitoring' && pathname.startsWith('/dashboard/analysis')) ||
             (href !== '/dashboard' && pathname.startsWith(href.split('/').slice(0, 3).join('/')));
           return (
             <Link

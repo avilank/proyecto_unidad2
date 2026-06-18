@@ -35,6 +35,21 @@ export class PrediccionFallo extends Model {
   @Column(DataType.DECIMAL(5, 2))
   declare probabilidad?: number;
 
+  @Column(DataType.DECIMAL(5, 2))
+  declare accuracy?: number;
+
+  @Column(DataType.DECIMAL(6, 3))
+  declare rocAuc?: number;
+
+  @Column(DataType.DECIMAL(5, 2))
+  declare precisionScore?: number;
+
+  @Column(DataType.DECIMAL(5, 2))
+  declare recallScore?: number;
+
+  @Column(DataType.DECIMAL(5, 2))
+  declare f1Score?: number;
+
   @Column({ type: DataType.BOOLEAN, defaultValue: false })
   declare esLider: boolean;
 

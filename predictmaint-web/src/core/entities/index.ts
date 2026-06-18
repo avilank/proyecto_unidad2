@@ -109,8 +109,12 @@ export interface Order {
   maquinaId: string;
   lecturaId: number | null;
   tipoFallo: TipoFallo | null;
+  modeloPrediccion?: string | null;
+  confianzaPrediccion?: number | null;
   algoritmoClasificador: string | null;
+  modeloClasificacion?: string | null;
   confianza: number | null;
+  confianzaLider?: number | null;
   ensembleAvg: number | null;
   nivelRiesgo: NivelRiesgo;
   tecnicoId: number | null;
@@ -147,6 +151,10 @@ export interface Alert {
   nivel: NivelRiesgo;
   reglaCodigo: string | null;
   tipoFallo: TipoFallo | null;
+  modeloPrediccion?: string | null;
+  confianzaPrediccion?: number | null;
+  modeloClasificacion?: string | null;
+  confianzaLider?: number | null;
   ensembleAvg: number | null;
   tecnicoId: number | null;
   tecnico?: { id: number; nombre: string; iniciales: string } | null;

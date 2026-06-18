@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Topbar } from '@/components/common/topbar';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
@@ -17,7 +16,7 @@ import { useMachines } from '@/presentation/hooks/useMachines';
 import { orderService } from '@/application/services/order.service';
 import type { OrderQuery } from '@/infrastructure/repositories/order.repository';
 import { EstadoOrden, TipoFallo } from '@/core/types';
-import { ClipboardList, Clock3, FileCheck2, ListChecks } from 'lucide-react';
+import { ClipboardList, Clock3, FileCheck2 } from 'lucide-react';
 
 const ESTADOS = Object.values(EstadoOrden);
 const TIPOS_FALLO = Object.values(TipoFallo);
@@ -90,7 +89,6 @@ export function OrdersHistoryView() {
         'ID',
         'Máquina',
         'Tipo Fallo',
-        'Nivel',
         'Técnico',
         'Algoritmo',
         'Confianza',
@@ -101,7 +99,6 @@ export function OrdersHistoryView() {
         r.id,
         r.maquinaId,
         r.tipoFallo ?? '',
-        r.nivelRiesgo,
         r.tecnico?.nombre ?? '',
         r.algoritmoClasificador ?? '',
         r.confianza != null ? r.confianza.toFixed(1) : '',
@@ -197,11 +194,10 @@ export function OrdersHistoryView() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <KpiCard icon={Clock3} value={pending} label="Pendiente" tone="warning" />
         <KpiCard icon={ClipboardList} value={inProgress} label="En Progreso" tone="accent" />
         <KpiCard icon={FileCheck2} value={done} label="Finalizado" tone="success" />
-        <KpiCard icon={ListChecks} value={total} label="Total filtrado" tone="accent" />
       </div>
 
       <Card>
@@ -223,15 +219,6 @@ export function OrdersHistoryView() {
                   },
                   { key: 'machine', header: 'Máquina', render: (r) => r.maquinaId },
                   { key: 'tipo', header: 'Tipo Fallo', render: (r) => r.tipoFallo ?? '—' },
-                  {
-                    key: 'nivel',
-                    header: 'Nivel',
-                    render: (r) => (
-                      <Badge variant={r.nivelRiesgo === 'CRITICAL' ? 'critical' : 'default'}>
-                        {r.nivelRiesgo}
-                      </Badge>
-                    ),
-                  },
                   {
                     key: 'tecnico',
                     header: 'Técnico',

@@ -8,6 +8,7 @@ import { Orden } from '../database/models/orden.model';
 import { PrediccionFallo } from '../database/models/prediccion-fallo.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
 import { MlGatewayModule } from '../ml-gateway/ml-gateway.module';
+import { MlModelsModule } from '../ml-models/ml-models.module';
 import { PredictionsController } from './predictions.controller';
 import { PredictionsService } from './predictions.service';
 
@@ -23,6 +24,7 @@ import { PredictionsService } from './predictions.service';
       TipoFallo,
     ]),
     MlGatewayModule,
+    MlModelsModule,
   ],
   controllers: [PredictionsController],
   providers: [PredictionsService],

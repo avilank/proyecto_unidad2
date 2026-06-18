@@ -28,6 +28,9 @@ export interface MlBinaryModelResult {
 }
 
 export interface MlPredictResponse {
+  modeloLider: string;
+  confianzaLider: number;
+  /** @deprecated Alias de confianzaLider (score del modelo líder, 0–1). */
   ensembleAvg: number;
   nivelRiesgo: string;
   consenso: string;
@@ -54,6 +57,7 @@ export interface MlMulticlassModelResult {
 }
 
 export interface MlClassifyResponse {
+  modeloLider: string;
   tipoPredicho: string;
   agreement: string;
   confianza: number;

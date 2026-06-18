@@ -83,9 +83,19 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
             <CardContent className="space-y-4">
               <div className="flex flex-wrap gap-2">
                 {data?.tipoFallo && <Badge variant="warning">{data.tipoFallo}</Badge>}
-                {data?.algoritmoClasificador && <Badge>{data.algoritmoClasificador}</Badge>}
+                {data?.modeloPrediccion && (
+                  <Badge>S-1: {prettyModelSlug(data.modeloPrediccion)}</Badge>
+                )}
+                {(data?.modeloClasificacion ?? data?.algoritmoClasificador) && (
+                  <Badge>
+                    S-2: {prettyModelSlug(data.modeloClasificacion ?? data.algoritmoClasificador!)}
+                  </Badge>
+                )}
+                {data?.confianzaPrediccion != null && (
+                  <Badge variant="accent">S-1 {data.confianzaPrediccion.toFixed(1)}%</Badge>
+                )}
                 {data?.confianza != null && (
-                  <Badge variant="accent">{data.confianza.toFixed(1)}%</Badge>
+                  <Badge variant="accent">S-2 {data.confianza.toFixed(1)}%</Badge>
                 )}
                 {data?.nivelRiesgo && <Badge variant="high">{data.nivelRiesgo}</Badge>}
               </div>
@@ -95,12 +105,18 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                 <Info label="Estado" value={data?.estado?.replace('_', ' ') ?? '—'} />
                 <Info label="Técnico" value={data?.tecnico?.nombre ?? 'Sin asignar'} />
                 <Info
-                  label="Confianza"
+                  label="Confianza S-2"
                   value={data?.confianza != null ? `${data.confianza.toFixed(1)}%` : '—'}
                 />
                 <Info
-                  label="Ensemble avg"
-                  value={data?.ensembleAvg != null ? data.ensembleAvg.toFixed(3) : '—'}
+                  label="Confianza S-1 (líder)"
+                  value={
+                    data?.confianzaPrediccion != null
+                      ? `${data.confianzaPrediccion.toFixed(1)}%`
+                      : data?.confianzaLider != null
+                        ? `${(data.confianzaLider * 100).toFixed(1)}%`
+                        : '—'
+                  }
                 />
                 <Info
                   label="Solución"
@@ -217,4 +233,16 @@ function Info({ label, value }: { label: string; value: string }) {
       <p className="font-medium text-ink">{value}</p>
     </div>
   );
+}
+
+function prettyModelSlug(model: string) {
+  const map: Record<string, string> = {
+    xgboost: 'XGBoost',
+    random_forest: 'Random Forest',
+    regresion_logistica: 'Reg. Logística',
+    lightgbm: 'LightGBM',
+    decision_tree: 'Decision Tree',
+    svm: 'SVM',
+  };
+  return map[model] ?? model;
 }

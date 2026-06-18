@@ -33,6 +33,21 @@ export class ModeloMl extends Model {
   @Column(DataType.DECIMAL(5, 2))
   declare f1Score?: number;
 
+  @Column(DataType.DECIMAL(5, 3))
+  declare f1Weighted?: number;
+
+  @Column(DataType.INTEGER)
+  declare tn?: number;
+
+  @Column(DataType.INTEGER)
+  declare fp?: number;
+
+  @Column(DataType.INTEGER)
+  declare fn?: number;
+
+  @Column(DataType.INTEGER)
+  declare tp?: number;
+
   @Column({ type: DataType.BOOLEAN, defaultValue: false })
   declare esPrediccion: boolean;
 

@@ -131,15 +131,18 @@ def predict(reading: SensorReading) -> dict[str, Any]:
             }
         )
 
-    ensemble_avg = round(sum(probabilities) / len(probabilities), 3)
-    consenso = "FALLA" if ensemble_avg >= 0.5 else "SIN_FALLA"
     leader_idx = max(range(len(probabilities)), key=lambda i: probabilities[i])
-    for idx, item in enumerate(modelos_resp):
-        item["esLider"] = idx == leader_idx
+    leader_prob = probabilities[leader_idx]
+    confianza_lider = round(leader_prob, 3)
+    leader = modelos_resp[leader_idx]
+    leader["esLider"] = True
+    consenso = leader["prediccion"]
 
     return {
-        "ensembleAvg": ensemble_avg,
-        "nivelRiesgo": _risk_level(ensemble_avg),
+        "modeloLider": leader["modelo"],
+        "confianzaLider": confianza_lider,
+        "ensembleAvg": confianza_lider,
+        "nivelRiesgo": _risk_level(confianza_lider),
         "consenso": consenso,
         "modelos": modelos_resp,
     }
@@ -152,8 +155,7 @@ def classify(reading: SensorReading) -> dict[str, Any]:
 
     modelos_resp: list[dict[str, Any]] = []
     votes: list[str] = []
-    leader_confidence = 0.0
-    leader_type = FAULT_TYPES[0]
+    confidences: list[float] = []
 
     for name in S2_MODELS:
         model = model_store.s2_models.get(name)
@@ -167,6 +169,7 @@ def classify(reading: SensorReading) -> dict[str, Any]:
         classes = list(model.classes_)
         prob_map = {str(cls): float(val) for cls, val in zip(classes, proba)}
         confidence = prob_map.get(tipo_predicho, 0.0) * 100
+        confidences.append(confidence)
 
         modelos_resp.append(
             {
@@ -191,20 +194,17 @@ def classify(reading: SensorReading) -> dict[str, Any]:
 
     agreement = _agreement_label(votes)
     consensus_type = max(set(votes), key=votes.count)
+    leader_idx = max(range(len(confidences)), key=lambda i: confidences[i])
+    leader = modelos_resp[leader_idx]
+    leader["esLider"] = True
     for item in modelos_resp:
         item["diverge"] = item["tipoPredicho"] != consensus_type
-        if item["modelo"] == "lightgbm":
-            item["esLider"] = True
-            leader_type = item["tipoPredicho"]
-            leader_confidence = max(
-                item["probHdf"],
-                item["probPwf"],
-                item["probTwf"],
-                item["probOsf"],
-                item["probRnf"],
-            )
+
+    leader_type = leader["tipoPredicho"]
+    leader_confidence = confidences[leader_idx]
 
     return {
+        "modeloLider": leader["modelo"],
         "tipoPredicho": leader_type if agreement != "BAJO" else consensus_type,
         "agreement": agreement,
         "confianza": round(leader_confidence, 1),

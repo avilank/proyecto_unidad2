@@ -38,12 +38,15 @@ export interface IOrderRepository {
   getTimeline(id: string): Promise<OrderEvent[]>;
   getBinaryPredictions(orderId: string): Promise<{
     items: BinaryPrediction[];
+    modeloLider: string | null;
+    confianzaLider: number | null;
     ensembleAvg: number | null;
     nivelRiesgo: string;
     consenso: string | null;
   }>;
   getMulticlassPredictions(orderId: string): Promise<{
     items: MulticlassPrediction[];
+    modeloLider: string | null;
     tipoPredicho: string | null;
     agreement: string;
     confianza: number | null;
