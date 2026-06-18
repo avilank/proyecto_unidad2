@@ -1,0 +1,348 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectModel } from '@nestjs/sequelize';
+import { Op } from 'sequelize';
+import { EstadoOrden } from '../common/enums';
+import { paginate, PaginationQueryDto } from '../common/dto/pagination.dto';
+import { generateOrderCodigo } from '../common/utils/id-generator.util';
+import { findMaquinaByCodigo } from '../common/utils/maquina.util';
+import { modeloSlug } from '../common/utils/modelo-ml.util';
+import { tecnicoIniciales, tecnicoNombre } from '../common/utils/tecnico-display.util';
+import { AnalisisFallo } from '../database/models/analisis-fallo.model';
+import { ClasificacionFallo } from '../database/models/clasificacion-fallo.model';
+import { EventoOrden } from '../database/models/evento-orden.model';
+import { LecturaSensor } from '../database/models/lectura-sensor.model';
+import { Maquina } from '../database/models/maquina.model';
+import { ModeloMl } from '../database/models/modelo-ml.model';
+import { Orden } from '../database/models/orden.model';
+import { SolucionAplicada } from '../database/models/solucion-aplicada.model';
+import { Tecnico } from '../database/models/tecnico.model';
+import { TipoFallo } from '../database/models/tipo-fallo.model';
+import { Usuario } from '../database/models/usuario.model';
+import { MachinesService } from '../machines/machines.service';
+import {
+  CreateOrderDto,
+  EscalateOrderDto,
+  RegisterSolutionDto,
+  UpdateOrderStatusDto,
+} from './dto/order.dto';
+
+const VALID_TRANSITIONS: Record<EstadoOrden, EstadoOrden[]> = {
+  [EstadoOrden.PENDIENTE]: [EstadoOrden.EN_PROGRESO],
+  [EstadoOrden.EN_PROGRESO]: [EstadoOrden.FINALIZADO],
+  [EstadoOrden.FINALIZADO]: [],
+};
+
+const ORDER_INCLUDES_BASE = [
+  { model: Maquina },
+  { model: Tecnico, include: [{ model: Usuario }] },
+  {
+    model: AnalisisFallo,
+    include: [
+      { model: LecturaSensor, include: [{ model: Maquina }] },
+      {
+        model: ClasificacionFallo,
+        include: [{ model: TipoFallo }, { model: ModeloMl }],
+      },
+    ],
+  },
+  { model: SolucionAplicada },
+];
+
+function buildOrderIncludes(tipoFallo?: string) {
+  const tipoFalloInclude = tipoFallo
+    ? { model: TipoFallo, where: { codigo: tipoFallo }, required: true as const }
+    : { model: TipoFallo };
+
+  return [
+    { model: Maquina },
+    { model: Tecnico, include: [{ model: Usuario }] },
+    {
+      model: AnalisisFallo,
+      required: Boolean(tipoFallo),
+      include: [
+        { model: LecturaSensor, include: [{ model: Maquina }] },
+        {
+          model: ClasificacionFallo,
+          where: { esLider: true },
+          required: Boolean(tipoFallo),
+          include: [tipoFalloInclude, { model: ModeloMl }],
+        },
+      ],
+    },
+    { model: SolucionAplicada },
+  ];
+}
+
+@Injectable()
+export class OrdersService {
+  constructor(
+    @InjectModel(Orden) private readonly ordenModel: typeof Orden,
+    @InjectModel(EventoOrden) private readonly eventoModel: typeof EventoOrden,
+    @InjectModel(Maquina) private readonly maquinaModel: typeof Maquina,
+    @InjectModel(LecturaSensor) private readonly lecturaModel: typeof LecturaSensor,
+    @InjectModel(AnalisisFallo) private readonly analisisModel: typeof AnalisisFallo,
+    private readonly machinesService: MachinesService,
+  ) {}
+
+  toResponse(o: Orden) {
+    const analisis = o.analisis;
+    const lider = analisis?.clasificaciones?.find((c) => c.esLider);
+    const ultimaSolucion = o.soluciones?.[o.soluciones.length - 1];
+
+    return {
+      id: o.codigo,
+      maquinaId: o.maquina?.codigo ?? String(o.idMaquina),
+      lecturaId: analisis?.idLectura != null ? Number(analisis.idLectura) : null,
+      tipoFallo: lider?.tipoFallo?.codigo ?? null,
+      algoritmoClasificador: lider?.modeloMl
+        ? modeloSlug(lider.modeloMl, lider.modeloMl.nombre)
+        : null,
+      confianza: lider?.confianza != null ? Number(lider.confianza) : null,
+      ensembleAvg:
+        analisis?.ensembleAvg != null ? Number(analisis.ensembleAvg) : null,
+      nivelRiesgo: analisis?.nivelRiesgo ?? 'MEDIUM',
+      tecnicoId: o.idTecnico ?? null,
+      estado: o.estado,
+      solucionDescripcion: ultimaSolucion?.descripcion ?? null,
+      solucionTipo: ultimaSolucion?.tipoSolucion ?? null,
+      detectadoEn: o.fechaCreacion,
+      finalizadoEn: o.fechaFin ?? null,
+      proximoReintentoAsignacion: o.proximoReintentoAsignacion?.toISOString() ?? null,
+      intentosAsignacion: o.intentosAsignacion ?? 0,
+      ...(o.maquina && { maquina: this.machinesService.toResponse(o.maquina) }),
+      ...(o.tecnico && {
+        tecnico: {
+          id: o.tecnico.idTecnico,
+          nombre: tecnicoNombre(o.tecnico),
+          iniciales: tecnicoIniciales(o.tecnico),
+        },
+      }),
+      ...(analisis?.lectura && {
+        lectura: this.machinesService.readingToResponse(analisis.lectura),
+      }),
+    };
+  }
+
+  private async findOrderByCodigo(codigo: string): Promise<Orden> {
+    const o = await this.ordenModel.findOne({
+      where: { codigo },
+      include: ORDER_INCLUDES_BASE,
+    });
+    if (!o) throw new NotFoundException('Orden no encontrada');
+    return o;
+  }
+
+  private buildWhere(
+    query: PaginationQueryDto & {
+      estado?: string;
+      maquinaId?: string;
+      tecnicoId?: number;
+      from?: string;
+      to?: string;
+      search?: string;
+      conTecnico?: boolean | string;
+    },
+  ) {
+    const where: Record<string, unknown> = {};
+    if (query.estado) where.estado = query.estado;
+    if (query.tecnicoId) where.idTecnico = query.tecnicoId;
+    if (query.conTecnico === true || query.conTecnico === 'true') {
+      where.idTecnico = { [Op.ne]: null };
+    }
+    if (query.search) where.codigo = { [Op.iLike]: `%${query.search}%` };
+    if (query.from || query.to) {
+      where.fechaCreacion = {
+        ...(query.from && { [Op.gte]: new Date(query.from) }),
+        ...(query.to && { [Op.lte]: new Date(query.to) }),
+      };
+    }
+    return where;
+  }
+
+  private async resolveMaquinaFilter(
+    where: Record<string, unknown>,
+    maquinaId?: string,
+  ): Promise<void> {
+    if (!maquinaId) return;
+    const m = await findMaquinaByCodigo(maquinaId);
+    if (m) where.idMaquina = m.idMaquina;
+  }
+
+  private async countOrders(
+    where: Record<string, unknown>,
+    includes: ReturnType<typeof buildOrderIncludes>,
+  ): Promise<number> {
+    return this.ordenModel.count({
+      where,
+      include: includes,
+      distinct: true,
+      col: 'id_orden',
+    });
+  }
+
+  async findAll(
+    query: PaginationQueryDto & {
+      estado?: string;
+      maquinaId?: string;
+      tipoFallo?: string;
+      tecnicoId?: number;
+      algoritmo?: string;
+      from?: string;
+      to?: string;
+      search?: string;
+      conTecnico?: boolean | string;
+    },
+  ) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const where = this.buildWhere(query);
+    await this.resolveMaquinaFilter(where, query.maquinaId);
+
+    const includes = buildOrderIncludes(query.tipoFallo);
+
+    const { rows, count } = await this.ordenModel.findAndCountAll({
+      where,
+      include: includes,
+      distinct: true,
+      col: 'id_orden',
+      offset: (page - 1) * limit,
+      limit,
+      order: [['fechaCreacion', 'DESC']],
+    });
+
+    let items = rows.map((o) => this.toResponse(o));
+    if (query.algoritmo) {
+      items = items.filter((i) => i.algoritmoClasificador === query.algoritmo);
+    }
+
+    const baseWhere = { ...where };
+    delete baseWhere.estado;
+
+    const [pendiente, enProgreso, finalizado] = await Promise.all([
+      this.countOrders({ ...baseWhere, estado: EstadoOrden.PENDIENTE }, includes),
+      this.countOrders({ ...baseWhere, estado: EstadoOrden.EN_PROGRESO }, includes),
+      this.countOrders({ ...baseWhere, estado: EstadoOrden.FINALIZADO }, includes),
+    ]);
+
+    return {
+      ...paginate(items, count, page, limit),
+      summary: { pendiente, enProgreso, finalizado },
+    };
+  }
+
+  async findOne(codigo: string) {
+    const o = await this.findOrderByCodigo(codigo);
+    return this.toResponse(o);
+  }
+
+  async getTimeline(codigo: string) {
+    const o = await this.findOrderByCodigo(codigo);
+    const eventos = await this.eventoModel.findAll({
+      where: { idOrden: o.idOrden },
+      order: [['fechaEvento', 'ASC']],
+    });
+    return eventos.map((e) => ({
+      id: Number(e.idEvento),
+      ordenId: o.codigo,
+      etapa: e.etapa,
+      descripcion: e.descripcion ?? null,
+      actor: e.actor ?? null,
+      ocurridoEn: e.fechaEvento,
+    }));
+  }
+
+  async create(dto: CreateOrderDto) {
+    const maquina = await findMaquinaByCodigo(dto.maquinaId);
+    if (!maquina) throw new NotFoundException('Máquina no encontrada');
+
+    const lectura = await this.lecturaModel.findOne({
+      where: { idMaquina: maquina.idMaquina },
+      order: [['fechaLectura', 'DESC']],
+    });
+    if (!lectura) {
+      throw new BadRequestException('La máquina no tiene lecturas registradas');
+    }
+
+    const analisis = await this.analisisModel.create({
+      idMaquina: maquina.idMaquina,
+      idLectura: lectura.idLectura,
+      nivelRiesgo: 'MEDIUM',
+      fechaAnalisis: new Date(),
+    });
+
+    const codigo = await generateOrderCodigo();
+    await this.ordenModel.create({
+      codigo,
+      idAnalisis: analisis.idAnalisis,
+      idMaquina: maquina.idMaquina,
+      estado: EstadoOrden.PENDIENTE,
+      fechaCreacion: new Date(),
+    });
+    return this.findOne(codigo);
+  }
+
+  async updateStatus(codigo: string, dto: UpdateOrderStatusDto) {
+    const o = await this.findOrderByCodigo(codigo);
+    const allowed = VALID_TRANSITIONS[o.estado as EstadoOrden];
+    if (!allowed.includes(dto.estado)) {
+      throw new ConflictException(
+        `Transición inválida: ${o.estado} → ${dto.estado}`,
+      );
+    }
+    await o.update({
+      estado: dto.estado,
+      ...(dto.estado === EstadoOrden.EN_PROGRESO && { fechaInicio: new Date() }),
+      ...(dto.estado === EstadoOrden.FINALIZADO && { fechaFin: new Date() }),
+    });
+    await this.eventoModel.create({
+      idOrden: o.idOrden,
+      etapa: dto.estado === EstadoOrden.EN_PROGRESO ? 'en_progreso' : 'finalizado',
+      descripcion: `Estado → ${dto.estado}`,
+      actor: 'usuario',
+      fechaEvento: new Date(),
+    });
+    return this.findOne(codigo);
+  }
+
+  async registerSolution(codigo: string, dto: RegisterSolutionDto) {
+    const o = await this.findOrderByCodigo(codigo);
+    if (o.estado === EstadoOrden.FINALIZADO) {
+      throw new ConflictException('La orden ya está finalizada');
+    }
+    await SolucionAplicada.create({
+      idOrden: o.idOrden,
+      tipoSolucion: dto.solucionTipo,
+      descripcion: dto.descripcion,
+      fechaRegistro: new Date(),
+    });
+    await o.update({
+      estado: EstadoOrden.FINALIZADO,
+      fechaFin: new Date(),
+    });
+    await this.eventoModel.create({
+      idOrden: o.idOrden,
+      etapa: 'finalizado',
+      descripcion: dto.descripcion,
+      actor: 'tecnico',
+      fechaEvento: new Date(),
+    });
+    return this.findOne(codigo);
+  }
+
+  async escalate(codigo: string, dto: EscalateOrderDto) {
+    const o = await this.findOrderByCodigo(codigo);
+    await this.eventoModel.create({
+      idOrden: o.idOrden,
+      etapa: 'escalado',
+      descripcion: dto.motivo,
+      actor: 'sistema',
+      fechaEvento: new Date(),
+    });
+    return this.findOne(codigo);
+  }
+}
