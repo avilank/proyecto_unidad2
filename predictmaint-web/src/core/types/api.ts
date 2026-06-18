@@ -19,6 +19,7 @@ export interface DashboardApiResponse {
   analisisHoy?: number;
   pipelinesHoy?: number;
   maquinasEvaluadasHoy?: number;
+  fallasDetectadasHoy?: number;
   criticosHoy?: number;
   moderadosHoy?: number;
   sinIncidenciaHoy?: number;
@@ -26,6 +27,7 @@ export interface DashboardApiResponse {
   alertasCriticas?: number;
   alertasModeradas?: number;
   sinIncidencia?: number;
+  fallosPorTipoHoy?: Record<string, number>;
   tasaDeteccion: number;
   precisionModelo: number;
 }

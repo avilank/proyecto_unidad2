@@ -39,7 +39,7 @@ export class AnalyticsService {
     const startDay = this.startOfDay();
     const totalMaquinas = await this.maquinaModel.count();
 
-    // Un "evento S-1" = una orden/pipeline iniciada hoy (regla + ML), no cada lectura repetida.
+    // Un "evento S-1" = pipeline iniciado hoy (regla disparada + evaluación ML).
     const ordenesHoy = await this.ordenModel.findAll({
       where: { fechaCreacion: { [Op.gte]: startDay } },
       attributes: ['idMaquina', 'estado'],
@@ -52,30 +52,60 @@ export class AnalyticsService {
       ],
     });
 
+    const pipelinesHoy = ordenesHoy.length;
+    const maquinasEvaluadasHoy = new Set(ordenesHoy.map((o) => o.idMaquina)).size;
+
+    const fallosPorTipoHoy: Record<string, number> = {
+      HDF: 0,
+      PWF: 0,
+      TWF: 0,
+      OSF: 0,
+      RNF: 0,
+    };
     let criticosHoy = 0;
     let moderadosHoy = 0;
-    let sinIncidenciaHoy = 0;
-    for (const o of ordenesHoy) {
-      const a = o.analisis!;
-      const sinFalla =
-        a.prediccion === PrediccionBinaria.SIN_FALLA ||
-        (o.estado === EstadoOrden.FINALIZADO && a.prediccion !== 'FALLA');
-      if (sinFalla) {
-        sinIncidenciaHoy += 1;
-      } else if (a.nivelRiesgo === NivelRiesgo.CRITICAL) {
+
+    const ordenesConFalla = await this.ordenModel.findAll({
+      where: { fechaCreacion: { [Op.gte]: startDay } },
+      include: [
+        {
+          model: AnalisisFallo,
+          where: { prediccion: PrediccionBinaria.FALLA },
+          required: true,
+          include: [
+            {
+              model: ClasificacionFallo,
+              where: { esLider: true },
+              required: true,
+              include: [{ model: TipoFallo, required: true }],
+            },
+          ],
+        },
+      ],
+    });
+
+    for (const o of ordenesConFalla) {
+      const analisis = o.analisis!;
+      const lider = analisis.clasificaciones?.[0];
+      const codigo = lider?.tipoFallo?.codigo;
+      if (!codigo || !(codigo in fallosPorTipoHoy)) continue;
+
+      fallosPorTipoHoy[codigo] += 1;
+      if (analisis.nivelRiesgo === NivelRiesgo.CRITICAL) {
         criticosHoy += 1;
       } else if (
-        a.nivelRiesgo === NivelRiesgo.HIGH ||
-        a.nivelRiesgo === NivelRiesgo.MEDIUM
+        analisis.nivelRiesgo === NivelRiesgo.HIGH ||
+        analisis.nivelRiesgo === NivelRiesgo.MEDIUM
       ) {
         moderadosHoy += 1;
-      } else {
-        sinIncidenciaHoy += 1;
       }
     }
 
-    const pipelinesHoy = criticosHoy + moderadosHoy + sinIncidenciaHoy;
-    const maquinasEvaluadasHoy = new Set(ordenesHoy.map((o) => o.idMaquina)).size;
+    const fallasDetectadasHoy = Object.values(fallosPorTipoHoy).reduce(
+      (sum, n) => sum + n,
+      0,
+    );
+    const sinIncidenciaHoy = Math.max(0, pipelinesHoy - fallasDetectadasHoy);
 
     const alertasActivas = await this.alertaModel.findAll({
       where: { estado: { [Op.notIn]: ['finalizado'] } },
@@ -103,6 +133,7 @@ export class AnalyticsService {
       analisisHoy: pipelinesHoy,
       pipelinesHoy,
       maquinasEvaluadasHoy,
+      fallasDetectadasHoy,
       criticosHoy,
       moderadosHoy,
       sinIncidenciaHoy,
@@ -110,6 +141,7 @@ export class AnalyticsService {
       alertasCriticas,
       alertasModeradas,
       sinIncidencia,
+      fallosPorTipoHoy,
       tasaDeteccion:
         totalMaquinas > 0 ? Math.round((maquinasEvaluadasHoy / totalMaquinas) * 100) / 100 : 0,
       precisionModelo: Math.round(precision * 10) / 10,

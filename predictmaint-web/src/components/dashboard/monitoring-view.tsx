@@ -18,7 +18,14 @@ import {
   useMonitoringStream,
 } from '@/presentation/hooks/useMonitoringStream';
 import { useNextDispatch } from '@/presentation/hooks/useNotifications';
-import { Activity, AlertTriangle, CheckCircle, Radio, X } from 'lucide-react';
+import {
+  emptyFaultCounts,
+  FAULT_ICONS,
+  FAULT_KPI_TONE,
+  FAULT_TYPE_ORDER,
+} from '@/lib/constants/fault-types';
+import { cn } from '@/lib/utils/cn';
+import { Radio, X } from 'lucide-react';
 
 const ALERT_PREVIEW_COUNT = 3;
 
@@ -126,17 +133,21 @@ export function MonitoringView() {
   const kpis = dashboard.data;
   const pipelinesHoy = kpis?.pipelinesHoy ?? kpis?.analisisHoy ?? kpis?.fallosHoy ?? 0;
   const maquinasEvaluadasHoy = kpis?.maquinasEvaluadasHoy ?? 0;
-  const criticalHoy = kpis?.criticosHoy ?? 0;
-  const moderateHoy = kpis?.moderadosHoy ?? 0;
-  const sinIncidenciaHoy = kpis?.sinIncidenciaHoy ?? 0;
-  const critical =
-    kpis?.alertasCriticas ?? alertsWithTechnician.filter((a) => a.nivel === 'CRITICAL').length;
-  const moderate =
-    kpis?.alertasModeradas ??
-    alertsWithTechnician.filter((a) => ['HIGH', 'MEDIUM'].includes(a.nivel)).length;
-  const sinIncidencia =
-    kpis?.sinIncidencia ??
-    Math.max(0, machineList.length - alertsByMachine.size);
+  const fallosPorTipo = useMemo(() => {
+    const base = emptyFaultCounts();
+    const fromApi = kpis?.fallosPorTipoHoy;
+    if (fromApi) {
+      for (const tipo of FAULT_TYPE_ORDER) {
+        base[tipo] = fromApi[tipo] ?? 0;
+      }
+    }
+    return base;
+  }, [kpis?.fallosPorTipoHoy]);
+  const fallasDetectadasHoy = useMemo(
+    () => FAULT_TYPE_ORDER.reduce((sum, tipo) => sum + fallosPorTipo[tipo], 0),
+    [fallosPorTipo],
+  );
+  const sinIncidenciaHoy = Math.max(0, pipelinesHoy - fallasDetectadasHoy);
 
   const topRecurrent = recurrent.data?.[0];
 
@@ -168,8 +179,7 @@ export function MonitoringView() {
         Hoy (desde 00:00):{' '}
         <strong className="text-ink">{pipelinesHoy}</strong> eventos S-1 en{' '}
         <strong className="text-ink">{maquinasEvaluadasHoy || machineList.length}</strong> máquinas
-        · <span className="text-danger">{criticalHoy} críticos</span> ·{' '}
-        <span className="text-warning">{moderateHoy} moderados</span> ·{' '}
+        · <span className="text-warning">{fallasDetectadasHoy} fallas detectadas</span> ·{' '}
         <span className="text-success">{sinIncidenciaHoy} sin incidencia</span>
       </p>
 
@@ -188,16 +198,25 @@ export function MonitoringView() {
         )}
       </p>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard
-          tone="accent"
-          icon={Radio}
-          value={kpis?.totalMaquinas ?? machineList.length}
-          label="Máquinas activas"
-        />
-        <KpiCard tone="danger" icon={AlertTriangle} value={critical} label="Alertas críticas" />
-        <KpiCard tone="warning" icon={Activity} value={moderate} label="Alertas moderadas" />
-        <KpiCard tone="success" icon={CheckCircle} value={sinIncidencia} label="Sin incidencia" />
+      <div className="grid grid-cols-2 items-stretch gap-4 sm:grid-cols-3 xl:grid-cols-6">
+        <div className="h-full min-w-0">
+          <KpiCard
+            tone="accent"
+            icon={Radio}
+            value={kpis?.totalMaquinas ?? machineList.length}
+            label="Máquinas activas"
+            className="h-full"
+          />
+        </div>
+        {FAULT_TYPE_ORDER.map((tipo, index) => (
+          <FaultTypeKpiCard
+            key={tipo}
+            tipo={tipo}
+            count={fallosPorTipo[tipo]}
+            index={index}
+            pulseKey={stream.readingTick}
+          />
+        ))}
       </div>
 
       <div className="grid gap-6 xl:grid-cols-5">
@@ -322,6 +341,47 @@ export function MonitoringView() {
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+function FaultTypeKpiCard({
+  tipo,
+  count,
+  index,
+  pulseKey,
+}: {
+  tipo: string;
+  count: number;
+  index: number;
+  pulseKey: number;
+}) {
+  const prev = useRef({ count, pulseKey });
+  const [flash, setFlash] = useState(false);
+  const Icon = FAULT_ICONS[tipo] ?? Radio;
+
+  useEffect(() => {
+    if (prev.current.count !== count && pulseKey > 0) {
+      setFlash(true);
+      const t = setTimeout(() => setFlash(false), 650);
+      prev.current = { count, pulseKey };
+      return () => clearTimeout(t);
+    }
+    prev.current = { count, pulseKey };
+  }, [count, pulseKey]);
+
+  return (
+    <div
+      className="h-full min-w-0 animate-slide-in-left"
+      style={{ animationDelay: `${(index + 1) * 80}ms` }}
+    >
+      <KpiCard
+        tone={FAULT_KPI_TONE[tipo] ?? 'accent'}
+        icon={Icon}
+        value={count}
+        label={tipo}
+        className={cn('h-full', flash && 'animate-value-flash ring-1 ring-accent/40')}
+      />
     </div>
   );
 }

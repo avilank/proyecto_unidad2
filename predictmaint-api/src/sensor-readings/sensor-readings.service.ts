@@ -12,6 +12,10 @@ import {
   PrediccionBinaria as PredBinEnum,
 } from '../common/enums';
 import { ORDER_CREATED_EVENT, OrderCreatedPayload } from '../common/events/order.events';
+import {
+  MONITORING_ALERT_EVENT,
+  MONITORING_READING_EVENT,
+} from '../common/events/monitoring.events';
 import { paginate, PaginationQueryDto } from '../common/dto/pagination.dto';
 import { addMinutes } from '../common/utils/shift.util';
 import { generateAlertCodigo, generateOrderCodigo } from '../common/utils/id-generator.util';
@@ -220,6 +224,22 @@ export class SensorReadingsService {
     await alert.update({ estado: EstadoAlerta.PENDIENTE });
   }
 
+  private emitMonitoringReading(
+    maquinaId: string,
+    reading: unknown,
+    extra?: { skipped?: string; cooldownMinutosRestantes?: number },
+  ): void {
+    this.eventEmitter.emit(MONITORING_READING_EVENT, {
+      maquinaId,
+      reading,
+      ...extra,
+    });
+  }
+
+  private emitMonitoringAlert(maquinaId: string, alert?: unknown, order?: unknown): void {
+    this.eventEmitter.emit(MONITORING_ALERT_EVENT, { maquinaId, alert, order });
+  }
+
   async create(dto: CreateSensorReadingDto) {
     const maquina = await findMaquinaByCodigo(dto.maquinaId);
     if (!maquina) throw new NotFoundException('Máquina no encontrada');
@@ -248,11 +268,16 @@ export class SensorReadingsService {
     });
 
     if (!triggered) {
+      this.emitMonitoringReading(dto.maquinaId, readingResp);
       return { reading: readingResp };
     }
 
     const gate = await this.shouldSkipPipeline(maquina.idMaquina);
     if (gate.skip) {
+      this.emitMonitoringReading(dto.maquinaId, readingResp, {
+        skipped: gate.reason,
+        cooldownMinutosRestantes: gate.cooldownMinutosRestantes,
+      });
       return {
         reading: readingResp,
         skipped: gate.reason,
@@ -344,6 +369,7 @@ export class SensorReadingsService {
     let tecnico = null;
 
     if (!s1Falla) {
+      await analisis.update({ prediccion: PredBinEnum.SIN_FALLA });
       await alert.update({ estado: EstadoAlerta.FINALIZADO });
       await order.update({ estado: EstadoOrden.FINALIZADO, fechaFin: now });
       await this.eventoModel.create({
@@ -440,6 +466,9 @@ export class SensorReadingsService {
 
     const alertResp = await this.alertsService.findOne(alertCodigo);
     const orderResp = await this.ordersService.findOne(orderCodigo);
+
+    this.emitMonitoringReading(dto.maquinaId, readingResp);
+    this.emitMonitoringAlert(dto.maquinaId, alertResp, orderResp);
 
     return {
       reading: readingResp,

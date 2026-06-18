@@ -32,15 +32,19 @@ export function KpiCard({
   className,
 }: KpiCardProps) {
   return (
-    <Card className={cn(kpiVariants({ tone }), className)}>
-      <CardContent className="flex items-start gap-4">
+    <Card className={cn(kpiVariants({ tone }), 'h-full', className)}>
+      <CardContent className="flex h-full min-h-[5.5rem] items-center gap-4 py-4">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-surface-2 text-ink-soft">
           <Icon className="h-5 w-5" />
         </div>
-        <div className="min-w-0">
-          <p className="text-2xl font-bold text-ink">{value}</p>
-          <p className="text-sm font-medium text-ink">{label}</p>
-          {sublabel && <p className="mt-1 text-xs text-ink-muted">{sublabel}</p>}
+        <div className="min-w-0 flex-1">
+          <p className="text-2xl font-bold leading-none text-ink">{value}</p>
+          <p className="mt-1.5 text-sm font-medium leading-tight text-ink">{label}</p>
+          {sublabel ? (
+            <p className="mt-1 text-xs text-ink-muted">{sublabel}</p>
+          ) : (
+            <span className="mt-1 block h-4" aria-hidden />
+          )}
         </div>
       </CardContent>
     </Card>

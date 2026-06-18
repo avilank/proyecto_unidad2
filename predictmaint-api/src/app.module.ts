@@ -26,6 +26,7 @@ import { ConfigCatalogModule } from './config-catalog/config-catalog.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { MlGatewayModule } from './ml-gateway/ml-gateway.module';
 import { JobsModule } from './jobs/jobs.module';
+import { MonitoringModule } from './monitoring/monitoring.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { JobsModule } from './jobs/jobs.module';
     AnalyticsModule,
     MlGatewayModule,
     JobsModule,
+    MonitoringModule,
   ],
   providers: [
     {

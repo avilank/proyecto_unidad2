@@ -13,28 +13,13 @@ import {
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { FAULT_COLORS, FAULT_LABELS } from '@/lib/constants/fault-types';
 
 interface TrendPoint {
   timestamp: string;
   value: number;
   maquinaId?: string;
 }
-
-const FAULT_COLORS: Record<string, string> = {
-  HDF: 'var(--color-danger)',
-  PWF: 'var(--color-warning)',
-  TWF: 'var(--color-accent)',
-  OSF: 'var(--color-success)',
-  RNF: 'var(--color-ink-muted)',
-};
-
-const FAULT_LABELS: Record<string, string> = {
-  HDF: 'Heat Dissipation',
-  PWF: 'Power Failure',
-  TWF: 'Tool Wear',
-  OSF: 'Overstrain',
-  RNF: 'Random',
-};
 
 export function SensorChartPanel({
   data,
