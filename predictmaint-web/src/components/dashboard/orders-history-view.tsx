@@ -15,6 +15,7 @@ import { useOrders } from '@/presentation/hooks/useOrders';
 import { useMachines } from '@/presentation/hooks/useMachines';
 import { orderService } from '@/application/services/order.service';
 import type { OrderQuery } from '@/infrastructure/repositories/order.repository';
+import type { Order } from '@/core/entities';
 import { EstadoOrden, TipoFallo } from '@/core/types';
 import { ClipboardList, Clock3, FileCheck2 } from 'lucide-react';
 
@@ -101,7 +102,7 @@ export function OrdersHistoryView() {
         r.tipoFallo ?? '',
         r.tecnico?.nombre ?? '',
         r.algoritmoClasificador ?? '',
-        r.confianza != null ? r.confianza.toFixed(1) : '',
+        confianzaS1Value(r)?.toFixed(1) ?? '',
         r.detectadoEn,
         r.estado,
       ]);
@@ -233,8 +234,8 @@ export function OrdersHistoryView() {
                   },
                   {
                     key: 'conf',
-                    header: 'Confianza S-2',
-                    render: (r) => (r.confianza != null ? `${r.confianza.toFixed(1)}%` : '—'),
+                    header: 'Confianza S-1',
+                    render: (r) => formatConfianzaS1(r),
                   },
                   {
                     key: 'sol',
@@ -320,6 +321,20 @@ function FilterSelect({
       </select>
     </div>
   );
+}
+
+function confianzaS1Value(
+  r: Pick<Order, 'confianzaPrediccion' | 'confianzaLider' | 'ensembleAvg'>,
+): number | null {
+  if (r.confianzaPrediccion != null) return r.confianzaPrediccion;
+  if (r.confianzaLider != null) return Number(r.confianzaLider) * 100;
+  if (r.ensembleAvg != null) return Number(r.ensembleAvg) * 100;
+  return null;
+}
+
+function formatConfianzaS1(r: Pick<Order, 'confianzaPrediccion' | 'confianzaLider' | 'ensembleAvg'>) {
+  const value = confianzaS1Value(r);
+  return value != null ? `${value.toFixed(1)}%` : '—';
 }
 
 function buildMonthOptions() {

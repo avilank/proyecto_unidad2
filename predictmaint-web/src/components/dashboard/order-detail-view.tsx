@@ -120,9 +120,6 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                   {data?.confianzaPrediccion != null && (
                     <Badge variant="accent">S-1 {data.confianzaPrediccion.toFixed(1)}%</Badge>
                   )}
-                  {data?.confianza != null && (
-                    <Badge variant="accent">S-2 {data.confianza.toFixed(1)}%</Badge>
-                  )}
                   {data?.nivelRiesgo && <Badge variant="high">{data.nivelRiesgo}</Badge>}
                 </div>
 
@@ -131,11 +128,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                   <Info label="Estado" value={data?.estado?.replace('_', ' ') ?? '—'} />
                   <Info label="Técnico" value={data?.tecnico?.nombre ?? 'Sin asignar'} />
                   <Info
-                    label="Confianza S-2"
-                    value={data?.confianza != null ? `${data.confianza.toFixed(1)}%` : '—'}
-                  />
-                  <Info
-                    label="Confianza S-1 (líder)"
+                    label="Confianza S-1"
                     value={
                       data?.confianzaPrediccion != null
                         ? `${data.confianzaPrediccion.toFixed(1)}%`
