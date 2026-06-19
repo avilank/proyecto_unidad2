@@ -54,6 +54,10 @@ export class OrderService {
     return orderRepository.escalate(orderId, motivo);
   }
 
+  rejectPrediction(orderId: string, justificacion: string): Promise<OrderDetail> {
+    return orderRepository.rejectPrediction(orderId, justificacion);
+  }
+
   startOrder(orderId: string): Promise<OrderDetail> {
     return orderRepository.startOrder(orderId);
   }

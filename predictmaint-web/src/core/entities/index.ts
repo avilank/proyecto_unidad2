@@ -128,6 +128,7 @@ export interface Order {
     esFalla: boolean | null;
     esPrediccionCorrecta: boolean | null;
     esClasificacionCorrecta: boolean | null;
+    decision?: string | null;
     fechaRegistro: string;
   } | null;
   detectadoEn: string;

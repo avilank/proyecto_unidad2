@@ -93,6 +93,12 @@ export class OrderRepository implements IOrderRepository {
     return apiClient.post<OrderDetail>(`/orders/${orderId}/escalate`, { motivo });
   }
 
+  rejectPrediction(orderId: string, justificacion: string): Promise<OrderDetail> {
+    return apiClient.post<OrderDetail>(`/orders/${orderId}/reject-prediction`, {
+      justificacion,
+    });
+  }
+
   startOrder(orderId: string): Promise<OrderDetail> {
     return apiClient.post<OrderDetail>(`/orders/${orderId}/start`);
   }

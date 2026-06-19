@@ -17,7 +17,7 @@ import { orderService } from '@/application/services/order.service';
 import type { OrderQuery } from '@/infrastructure/repositories/order.repository';
 import type { Order } from '@/core/entities';
 import { EstadoOrden, SolucionTipo, TipoFallo } from '@/core/types';
-import { ClipboardList, Clock3, FileCheck2 } from 'lucide-react';
+import { ClipboardList, Clock3, FileCheck2, ThumbsDown } from 'lucide-react';
 
 const ESTADOS = Object.values(EstadoOrden);
 const TIPOS_FALLO = Object.values(TipoFallo);
@@ -73,6 +73,7 @@ export function OrdersHistoryView() {
   const pending = summary?.pendiente ?? 0;
   const inProgress = summary?.enProgreso ?? 0;
   const done = summary?.finalizado ?? 0;
+  const rejected = summary?.rechazada ?? 0;
 
   const exportCsv = async () => {
     setExporting(true);
@@ -205,10 +206,11 @@ export function OrdersHistoryView() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard icon={Clock3} value={pending} label="Pendiente" tone="warning" />
         <KpiCard icon={ClipboardList} value={inProgress} label="En Progreso" tone="accent" />
         <KpiCard icon={FileCheck2} value={done} label="Finalizado" tone="success" />
+        <KpiCard icon={ThumbsDown} value={rejected} label="Rechazada" tone="danger" />
       </div>
 
       <Card>

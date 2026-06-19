@@ -17,6 +17,12 @@ export enum EstadoOrden {
   PENDIENTE = 'pendiente',
   EN_PROGRESO = 'en_progreso',
   FINALIZADO = 'finalizado',
+  RECHAZADA = 'rechazada',
+}
+
+export enum DecisionPrediccion {
+  ACEPTADA = 'aceptada',
+  RECHAZADA = 'rechazada',
 }
 
 export enum Turno {

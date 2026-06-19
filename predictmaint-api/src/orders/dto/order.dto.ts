@@ -54,3 +54,9 @@ export class EscalateOrderDto {
   @IsString()
   motivo!: string;
 }
+
+export class RejectPredictionDto {
+  @ApiProperty({ description: 'Justificación del técnico para rechazar la predicción' })
+  @IsString()
+  justificacion!: string;
+}

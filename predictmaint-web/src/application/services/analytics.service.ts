@@ -45,6 +45,10 @@ export class AnalyticsService {
   getAvailability() {
     return analyticsRepository.getAvailability();
   }
+
+  getPredictionValidation(range = 'month') {
+    return analyticsRepository.getPredictionValidation(range);
+  }
 }
 
 export const analyticsService = new AnalyticsService();

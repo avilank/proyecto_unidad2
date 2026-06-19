@@ -5,6 +5,7 @@ import { AvailabilityPanel } from '@/components/dashboard/analytics/availability
 import { AnalyticsKpiRow } from '@/components/dashboard/analytics/analytics-kpi-row';
 import { CsvLogTable } from '@/components/dashboard/analytics/csv-log-table';
 import { FaultAnalyticsPanel } from '@/components/dashboard/analytics/fault-analytics-panel';
+import { PredictionValidationPanel } from '@/components/dashboard/analytics/prediction-validation-panel';
 import { RagEffectivenessPanel } from '@/components/dashboard/analytics/rag-effectiveness-panel';
 import { RecurrencePanel } from '@/components/dashboard/analytics/recurrence-panel';
 import { UnattendedPanel } from '@/components/dashboard/analytics/unattended-panel';
@@ -53,6 +54,8 @@ export function AnalyticsView() {
         </div>
 
         <AvailabilityPanel data={availability.data} isLoading={availability.isLoading} />
+
+        <PredictionValidationPanel />
 
         <CsvLogTable items={logs} isLoading={notificationLog.isLoading} />
       </div>

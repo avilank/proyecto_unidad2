@@ -56,6 +56,12 @@ export class AnalyticsController {
     return this.analyticsService.getAvailability();
   }
 
+  @Get('prediction-validation')
+  @ApiOperation({ summary: 'Historial: predicción vs. decisión del técnico' })
+  getPredictionValidation(@Query('range') range = 'month') {
+    return this.analyticsService.getPredictionValidation(range);
+  }
+
   @Get('sensor-trend')
   @ApiOperation({ summary: 'Serie temporal de sensores' })
   getSensorTrend(

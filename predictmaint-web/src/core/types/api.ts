@@ -10,6 +10,7 @@ export interface OrdersPaginatedResponse<T> extends PaginatedResponse<T> {
     pendiente: number;
     enProgreso: number;
     finalizado: number;
+    rechazada: number;
   };
 }
 
@@ -74,6 +75,19 @@ export interface NotificationLogEntry {
   tipoEnvio: string | null;
   estado: string;
   enviadoEn: string;
+}
+
+export interface PredictionValidationRow {
+  orden: string;
+  maquinaId: string;
+  tecnico: string;
+  prediccion: string;
+  tipoFallo: string | null;
+  decision: 'aceptada' | 'rechazada';
+  esPrediccionCorrecta: boolean | null;
+  justificacion: string | null;
+  estado: string;
+  fecha: string;
 }
 
 export interface SensorTrendPoint {

@@ -6,6 +6,7 @@ import type {
   MachineRecurrence,
   NotificationLogEntry,
   PaginatedResponse,
+  PredictionValidationRow,
   RecurrentMachineFault,
   SensorTrendPoint,
   UnattendedOrder,
@@ -69,6 +70,12 @@ export class AnalyticsRepository implements IAnalyticsRepository {
 
   getAvailability(): Promise<AvailabilitySnapshot> {
     return apiClient.get<AvailabilitySnapshot>('/analytics/availability');
+  }
+
+  getPredictionValidation(range = 'month'): Promise<PredictionValidationRow[]> {
+    return apiClient.get<PredictionValidationRow[]>('/analytics/prediction-validation', {
+      params: { range },
+    });
   }
 }
 

@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op } from 'sequelize';
-import { EstadoOrden, EstadoAlerta, RolUsuario } from '../common/enums';
+import { DecisionPrediccion, EstadoOrden, EstadoAlerta, RolUsuario } from '../common/enums';
 import { paginate, PaginationQueryDto } from '../common/dto/pagination.dto';
 import { generateOrderCodigo } from '../common/utils/id-generator.util';
 import { findMaquinaByCodigo } from '../common/utils/maquina.util';
@@ -33,14 +33,16 @@ import {
   CreateOrderDto,
   EscalateOrderDto,
   RegisterSolutionDto,
+  RejectPredictionDto,
   UpdateOrderStatusDto,
 } from './dto/order.dto';
 import type { AuthUserPayload } from '../auth/auth.service';
 
 const VALID_TRANSITIONS: Record<EstadoOrden, EstadoOrden[]> = {
-  [EstadoOrden.PENDIENTE]: [EstadoOrden.EN_PROGRESO],
+  [EstadoOrden.PENDIENTE]: [EstadoOrden.EN_PROGRESO, EstadoOrden.RECHAZADA],
   [EstadoOrden.EN_PROGRESO]: [EstadoOrden.FINALIZADO],
   [EstadoOrden.FINALIZADO]: [],
+  [EstadoOrden.RECHAZADA]: [],
 };
 
 const ORDER_INCLUDES_BASE = [
@@ -188,6 +190,7 @@ export class OrdersService {
             esFalla: ultimaObservacion.esFalla ?? null,
             esPrediccionCorrecta: ultimaObservacion.esPrediccionCorrecta ?? null,
             esClasificacionCorrecta: ultimaObservacion.esClasificacionCorrecta ?? null,
+            decision: ultimaObservacion.decision ?? null,
             fechaRegistro: ultimaObservacion.fechaRegistro,
           }
         : null,
@@ -307,15 +310,16 @@ export class OrdersService {
     const baseWhere = { ...where };
     delete baseWhere.estado;
 
-    const [pendiente, enProgreso, finalizado] = await Promise.all([
+    const [pendiente, enProgreso, finalizado, rechazada] = await Promise.all([
       this.countOrders({ ...baseWhere, estado: EstadoOrden.PENDIENTE }, includes),
       this.countOrders({ ...baseWhere, estado: EstadoOrden.EN_PROGRESO }, includes),
       this.countOrders({ ...baseWhere, estado: EstadoOrden.FINALIZADO }, includes),
+      this.countOrders({ ...baseWhere, estado: EstadoOrden.RECHAZADA }, includes),
     ]);
 
     return {
       ...paginate(items, count, page, limit),
-      summary: { pendiente, enProgreso, finalizado },
+      summary: { pendiente, enProgreso, finalizado, rechazada },
     };
   }
 
@@ -364,6 +368,61 @@ export class OrdersService {
       throw new BadRequestException('La orden no tiene técnico asignado');
     }
     return this.updateStatus(codigo, { estado: EstadoOrden.EN_PROGRESO }, user, 'tecnico');
+  }
+
+  /**
+   * El técnico rechaza la predicción automática: registra la justificación como
+   * observación técnica (esPrediccionCorrecta = false), cierra la orden en estado
+   * 'rechazada' y libera al técnico. Alimenta el historial de aciertos del modelo.
+   */
+  async rejectPrediction(
+    codigo: string,
+    dto: RejectPredictionDto,
+    user?: AuthUserPayload,
+  ) {
+    const o = await this.findOrderByCodigo(codigo);
+    this.assertCanAccessOrder(o, user);
+    if (o.estado !== EstadoOrden.PENDIENTE) {
+      throw new ConflictException(
+        'Solo se puede rechazar la predicción de una orden pendiente',
+      );
+    }
+    const justificacion = dto.justificacion?.trim();
+    if (!justificacion) {
+      throw new BadRequestException('La justificación es obligatoria');
+    }
+
+    const liderS2 = o.analisis?.clasificaciones?.find((c) => c.esLider);
+    const idTipoFallo = liderS2?.idTipoFallo ?? liderS2?.tipoFallo?.idTipoFallo;
+
+    await ObservacionTecnica.create({
+      idOrden: o.idOrden,
+      idTipoFallo,
+      esFalla: false,
+      esPrediccionCorrecta: false,
+      esClasificacionCorrecta: false,
+      decision: DecisionPrediccion.RECHAZADA,
+      comentario: justificacion,
+      fechaRegistro: new Date(),
+    });
+
+    await o.update({
+      estado: EstadoOrden.RECHAZADA,
+      fechaFin: new Date(),
+      observaciones: justificacion,
+    });
+    await this.syncAlertEstadoForOrder(o.idOrden, EstadoAlerta.FINALIZADO);
+    await this.eventoModel.create({
+      idOrden: o.idOrden,
+      etapa: 'rechazo_prediccion',
+      descripcion: `Predicción rechazada: ${justificacion}`,
+      actor: 'tecnico',
+      fechaEvento: new Date(),
+    });
+    if (o.idTecnico) {
+      await this.techniciansService.releaseIfIdle(o.idTecnico);
+    }
+    return this.findOne(codigo, user);
   }
 
   async getTimeline(codigo: string, user?: AuthUserPayload) {
@@ -482,6 +541,7 @@ export class OrdersService {
       esFalla: dto.esFalla ?? Boolean(liderS2?.tipoFallo),
       esPrediccionCorrecta: dto.esPrediccionCorrecta ?? true,
       esClasificacionCorrecta: dto.esClasificacionCorrecta ?? true,
+      decision: DecisionPrediccion.ACEPTADA,
       comentario: dto.comentario?.trim() || dto.descripcion,
       fechaRegistro: new Date(),
     });

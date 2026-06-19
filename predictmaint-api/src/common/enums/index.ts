@@ -17,6 +17,13 @@ export enum EstadoOrden {
   PENDIENTE = 'pendiente',
   EN_PROGRESO = 'en_progreso',
   FINALIZADO = 'finalizado',
+  RECHAZADA = 'rechazada',
+}
+
+/** Decisión del técnico sobre la predicción automática de la orden. */
+export enum DecisionPrediccion {
+  ACEPTADA = 'aceptada',
+  RECHAZADA = 'rechazada',
 }
 
 export enum EstadoAlerta {

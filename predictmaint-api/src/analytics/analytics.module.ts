@@ -7,6 +7,7 @@ import { LecturaSensor } from '../database/models/lectura-sensor.model';
 import { Maquina } from '../database/models/maquina.model';
 import { ModeloMl } from '../database/models/modelo-ml.model';
 import { Orden } from '../database/models/orden.model';
+import { ObservacionTecnica } from '../database/models/observacion-tecnica.model';
 import { PrediccionFallo } from '../database/models/prediccion-fallo.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
 import { Tecnico } from '../database/models/tecnico.model';
@@ -22,6 +23,7 @@ import { AnalyticsService } from './analytics.service';
     SequelizeModule.forFeature([
       Maquina,
       Orden,
+      ObservacionTecnica,
       Alerta,
       PrediccionFallo,
       AnalisisFallo,

@@ -16,6 +16,7 @@ const pillVariants = cva(
         clasificando: 'bg-purple-500/20 text-purple-400',
         operacion: 'bg-success-soft text-success',
         mantenimiento: 'bg-ink-muted-soft text-ink-muted',
+        rechazada: 'bg-danger-soft text-danger',
       },
     },
     defaultVariants: { status: 'normal' },
@@ -33,6 +34,7 @@ const LABELS: Record<string, string> = {
   clasificando: 'Clasificando',
   operacion: 'NORMAL',
   mantenimiento: 'Mantenimiento',
+  rechazada: 'Rechazada',
 };
 
 export interface StatusPillProps

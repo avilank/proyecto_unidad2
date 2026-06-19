@@ -58,4 +58,10 @@ export function useAvailability() {
   });
 }
 
+export function usePredictionValidation(range = 'month') {
+  return useSWR(['/analytics/prediction-validation', range], () =>
+    analyticsService.getPredictionValidation(range),
+  );
+}
+
 export const useRepetitiveFaults = useRecurrentFaults;

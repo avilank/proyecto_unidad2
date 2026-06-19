@@ -1,7 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op } from 'sequelize';
-import { EstadoOrden, NivelRiesgo, PrediccionBinaria, SolucionTipo } from '../common/enums';
+import {
+  DecisionPrediccion,
+  EstadoOrden,
+  NivelRiesgo,
+  PrediccionBinaria,
+  SolucionTipo,
+} from '../common/enums';
 import { Alerta } from '../database/models/alerta.model';
 import { AnalisisFallo } from '../database/models/analisis-fallo.model';
 import { ClasificacionFallo } from '../database/models/clasificacion-fallo.model';
@@ -9,6 +15,7 @@ import { LecturaSensor } from '../database/models/lectura-sensor.model';
 import { Maquina } from '../database/models/maquina.model';
 import { ModeloMl } from '../database/models/modelo-ml.model';
 import { Orden } from '../database/models/orden.model';
+import { ObservacionTecnica } from '../database/models/observacion-tecnica.model';
 import { SolucionAplicada } from '../database/models/solucion-aplicada.model';
 import { PrediccionFallo } from '../database/models/prediccion-fallo.model';
 import { RespuestaRecomendacion } from '../database/models/respuesta-recomendacion.model';
@@ -39,6 +46,8 @@ export class AnalyticsService {
   constructor(
     @InjectModel(Maquina) private readonly maquinaModel: typeof Maquina,
     @InjectModel(Orden) private readonly ordenModel: typeof Orden,
+    @InjectModel(ObservacionTecnica)
+    private readonly observacionModel: typeof ObservacionTecnica,
     @InjectModel(Alerta) private readonly alertaModel: typeof Alerta,
     @InjectModel(AnalisisFallo) private readonly analisisModel: typeof AnalisisFallo,
     @InjectModel(PrediccionFallo) private readonly prediccionModel: typeof PrediccionFallo,
@@ -454,6 +463,72 @@ export class AnalyticsService {
         detalleMantenimiento: detalleMaquinasMantenimiento,
       },
     };
+  }
+
+  /**
+   * Historial de aciertos del modelo: contrasta la predicción automática
+   * (falla / tipo de falla) contra la decisión del técnico (aceptada / rechazada).
+   * Solo incluye órdenes con técnico asignado y observación técnica registrada.
+   */
+  async getPredictionValidation(range: string) {
+    const from = this.rangeStart(range);
+    const ordenes = await this.ordenModel.findAll({
+      where: {
+        fechaCreacion: { [Op.gte]: from },
+        idTecnico: { [Op.ne]: null },
+      },
+      include: [
+        { model: Maquina, attributes: ['codigo'] },
+        {
+          model: Tecnico,
+          include: [{ model: Usuario, attributes: ['nombres', 'apellidos'] }],
+        },
+        { model: ObservacionTecnica, required: true },
+        {
+          model: AnalisisFallo,
+          required: true,
+          include: [
+            {
+              model: ClasificacionFallo,
+              where: { esLider: true },
+              required: false,
+              include: [{ model: TipoFallo, required: false }],
+            },
+          ],
+        },
+      ],
+      order: [['fechaCreacion', 'DESC']],
+    });
+
+    return ordenes.map((o) => {
+      const obs = [...(o.observacionesTecnica ?? [])].sort(
+        (a, b) =>
+          new Date(b.fechaRegistro).getTime() - new Date(a.fechaRegistro).getTime(),
+      )[0];
+      const lider = o.analisis?.clasificaciones?.find((c) => c.esLider);
+      const rechazada =
+        obs?.decision === DecisionPrediccion.RECHAZADA ||
+        o.estado === EstadoOrden.RECHAZADA ||
+        obs?.esPrediccionCorrecta === false;
+      const prediccion =
+        o.analisis?.prediccion ??
+        (lider?.tipoFallo ? PrediccionBinaria.FALLA : PrediccionBinaria.SIN_FALLA);
+
+      return {
+        orden: o.codigo,
+        maquinaId: o.maquina?.codigo ?? String(o.idMaquina),
+        tecnico: o.tecnico ? tecnicoNombre(o.tecnico) : 'Sin asignar',
+        prediccion,
+        tipoFallo: lider?.tipoFallo?.codigo ?? null,
+        decision: rechazada
+          ? DecisionPrediccion.RECHAZADA
+          : DecisionPrediccion.ACEPTADA,
+        esPrediccionCorrecta: obs?.esPrediccionCorrecta ?? null,
+        justificacion: rechazada ? (obs?.comentario ?? null) : null,
+        estado: o.estado,
+        fecha: (obs?.fechaRegistro ?? o.fechaCreacion).toISOString(),
+      };
+    });
   }
 
   exportCsv(type: string, range: string) {

@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { CheckCircle2, ClipboardList, Eye, Play } from 'lucide-react';
+import { CheckCircle2, ClipboardList, Eye, Play, ThumbsDown, X } from 'lucide-react';
 import { Topbar } from '@/components/common/topbar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +18,9 @@ export function TechnicianBoardView() {
   const router = useRouter();
   const board = useTechnicianBoard();
   const [startingId, setStartingId] = useState<string | null>(null);
+  const [rejectOrder, setRejectOrder] = useState<Order | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejecting, setRejecting] = useState(false);
 
   const pendientes = board.data?.pendientes ?? [];
   const completadas = board.data?.completadas ?? [];
@@ -31,6 +34,27 @@ export function TechnicianBoardView() {
       alert('No se pudo iniciar la orden');
     } finally {
       setStartingId(null);
+    }
+  };
+
+  const closeRejectModal = () => {
+    if (rejecting) return;
+    setRejectOrder(null);
+    setRejectReason('');
+  };
+
+  const handleReject = async () => {
+    if (!rejectOrder || !rejectReason.trim()) return;
+    setRejecting(true);
+    try {
+      await orderService.rejectPrediction(rejectOrder.id, rejectReason.trim());
+      await board.mutate();
+      setRejectOrder(null);
+      setRejectReason('');
+    } catch {
+      alert('No se pudo rechazar la predicción');
+    } finally {
+      setRejecting(false);
     }
   };
 
@@ -64,6 +88,7 @@ export function TechnicianBoardView() {
                   variant="pending"
                   busy={startingId === order.id}
                   onStart={() => handleStart(order.id)}
+                  onReject={() => setRejectOrder(order)}
                   onView={() => router.push(`/dashboard/orders/${order.id}`)}
                 />
               ))}
@@ -88,6 +113,69 @@ export function TechnicianBoardView() {
           </div>
         )}
       </div>
+
+      {rejectOrder && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={closeRejectModal}
+        >
+          <Card
+            className="w-full max-w-md"
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+          >
+            <CardHeader className="flex flex-row items-start justify-between gap-2">
+              <div>
+                <CardTitle>Rechazar predicción</CardTitle>
+                <p className="mt-1 text-sm text-ink-muted">
+                  Orden {rejectOrder.id} · {rejectOrder.maquinaId}
+                  {rejectOrder.tipoFallo ? ` · ${rejectOrder.tipoFallo}` : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={rejecting}
+                onClick={closeRejectModal}
+                className="rounded-md p-1 text-ink-muted transition-colors hover:text-ink disabled:opacity-50"
+                aria-label="Cerrar"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-ink-soft">
+                Indica por qué la predicción no corresponde a una falla real. La orden
+                quedará marcada como rechazada y volverás a estar disponible.
+              </p>
+              <textarea
+                rows={4}
+                autoFocus
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Ej: La máquina opera dentro de parámetros normales; la lectura fue un pico transitorio del sensor…"
+                className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  disabled={rejecting}
+                  onClick={closeRejectModal}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant="danger"
+                  className="flex-1"
+                  disabled={rejecting || !rejectReason.trim()}
+                  onClick={handleReject}
+                >
+                  Confirmar rechazo
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
@@ -147,12 +235,14 @@ function OrderCard({
   variant,
   busy,
   onStart,
+  onReject,
   onView,
 }: {
   order: Order;
   variant: 'pending' | 'completed';
   busy?: boolean;
   onStart?: () => void;
+  onReject?: () => void;
   onView: () => void;
 }) {
   const isPending = order.estado === EstadoOrden.PENDIENTE;
@@ -240,6 +330,12 @@ function OrderCard({
           <Button size="sm" disabled={busy} onClick={onStart}>
             <Play className="mr-1.5 h-3.5 w-3.5" />
             Iniciar
+          </Button>
+        )}
+        {variant === 'pending' && isPending && onReject && (
+          <Button size="sm" variant="danger" disabled={busy} onClick={onReject}>
+            <ThumbsDown className="mr-1.5 h-3.5 w-3.5" />
+            Rechazar predicción
           </Button>
         )}
         <Button size="sm" variant="secondary" onClick={onView}>

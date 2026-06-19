@@ -35,6 +35,10 @@ export class ObservacionTecnica extends Model {
   @Column(DataType.BOOLEAN)
   declare esClasificacionCorrecta?: boolean;
 
+  /** Decisión del técnico sobre la predicción: 'aceptada' | 'rechazada'. */
+  @Column({ type: DataType.STRING(12), allowNull: false, defaultValue: 'aceptada' })
+  declare decision: string;
+
   @Column(DataType.TEXT)
   declare comentario?: string;
 

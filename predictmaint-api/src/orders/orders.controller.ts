@@ -15,6 +15,7 @@ import {
   CreateOrderDto,
   EscalateOrderDto,
   RegisterSolutionDto,
+  RejectPredictionDto,
   UpdateOrderStatusDto,
 } from './dto/order.dto';
 import { OrdersService } from './orders.service';
@@ -90,6 +91,16 @@ export class OrdersController {
     @UserContext() user: AuthUserPayload,
   ) {
     return this.ordersService.registerSolution(id, dto, user);
+  }
+
+  @Post(':id/reject-prediction')
+  @ApiOperation({ summary: 'Rechazar predicción (técnico)' })
+  rejectPrediction(
+    @Param('id') id: string,
+    @Body() dto: RejectPredictionDto,
+    @UserContext() user: AuthUserPayload,
+  ) {
+    return this.ordersService.rejectPrediction(id, dto, user);
   }
 
   @Post(':id/escalate')
