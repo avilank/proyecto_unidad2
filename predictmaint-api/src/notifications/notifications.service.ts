@@ -23,6 +23,7 @@ import { SolucionAplicada } from '../database/models/solucion-aplicada.model';
 import { Tecnico } from '../database/models/tecnico.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
 import { Usuario } from '../database/models/usuario.model';
+import { tecnicoNombre } from '../common/utils/tecnico-display.util';
 import {
   buildAlertMessageInput,
   buildEmailHtml,
@@ -70,7 +71,10 @@ export class NotificationsService {
 
     const { rows, count } = await this.mensajeModel.findAndCountAll({
       where,
-      include: [{ model: Orden, attributes: ['codigo'] }],
+      include: [
+        { model: Orden, attributes: ['codigo'] },
+        { model: Tecnico, attributes: ['idTecnico', 'nombres', 'apellidos'] },
+      ],
       offset: (page - 1) * limit,
       limit,
       order: [['enviadoEn', 'DESC']],
@@ -80,6 +84,7 @@ export class NotificationsService {
       rows.map((m) => ({
         id: Number(m.id),
         tecnicoId: m.tecnicoId ?? null,
+        tecnico: m.tecnico ? tecnicoNombre(m.tecnico) : null,
         ordenId: m.orden?.codigo ?? null,
         maquinas: m.maquinas ?? null,
         motivo: m.motivo ?? null,

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { AlertTriangle, Cpu, Gem, Settings } from 'lucide-react';
 import type { Alert, Machine } from '@/core/entities';
 import { Topbar } from '@/components/common/topbar';
-import { KpiCard } from '@/components/ui/kpi-card';
+import { AnimatedKpiCard } from '@/components/ui/animated-kpi-card';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import { StatusPill, alertEstadoToPill } from '@/components/ui/status-pill';
@@ -64,28 +64,32 @@ export function DashboardView() {
 
       <div className="flex flex-col gap-6 px-6 pb-6 pt-5">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard
+        <AnimatedKpiCard
+          index={0}
           tone="accent"
           icon={Settings}
           value={d?.totalMaquinas ?? '—'}
           label="Máquinas Monitoreadas"
           sublabel={`${operacionCount || d?.totalMaquinas || 0} en operación`}
         />
-        <KpiCard
+        <AnimatedKpiCard
+          index={1}
           tone="danger"
           icon={AlertTriangle}
           value={d?.fallasDetectadasHoy ?? d?.fallosHoy ?? '—'}
           label="Fallos Detectados Hoy"
           sublabel={`${d?.criticosHoy ?? 0} criticos / ${d?.moderadosHoy ?? 0} moderados`}
         />
-        <KpiCard
+        <AnimatedKpiCard
+          index={2}
           tone="success"
           icon={Gem}
           value={tasaFallo != null ? `${tasaFallo.toFixed(1)}%` : '—'}
           label="Tasa de Fallo Global"
           sublabel={tasaFallo != null && tasaFallo <= 5 ? 'Umbral: 5% OK' : 'Umbral: 5% superado'}
         />
-        <KpiCard
+        <AnimatedKpiCard
+          index={3}
           tone="warning"
           icon={Cpu}
           value={d ? `${d.precisionModelo}%` : '—'}
@@ -118,7 +122,7 @@ export function DashboardView() {
         <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
           <CardTitle>Alertas Recientes</CardTitle>
           <Link href="/dashboard/orders" className="text-sm font-medium text-accent hover:underline">
-            Ver historial completo →
+            Ver historial completo
           </Link>
         </CardHeader>
         <CardContent>

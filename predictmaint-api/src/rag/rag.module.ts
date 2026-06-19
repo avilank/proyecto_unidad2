@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
+import { Alerta } from '../database/models/alerta.model';
 import { AnalisisFallo } from '../database/models/analisis-fallo.model';
 import { ClasificacionFallo } from '../database/models/clasificacion-fallo.model';
 import { EventoOrden } from '../database/models/evento-orden.model';
@@ -25,6 +26,7 @@ import { RagService } from './rag.service';
       TipoFallo,
       Maquina,
       RespuestaRecomendacion,
+      Alerta,
     ]),
     MlGatewayModule,
   ],

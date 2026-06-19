@@ -6,17 +6,24 @@ import { authService } from '@/application/services/auth.service';
 import { useSessionStore } from '@/presentation/stores/sessionStore';
 
 export function useSessionHydrated() {
-  const [hydrated, setHydrated] = useState(
-    () => useSessionStore.persist.hasHydrated(),
-  );
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    if (useSessionStore.persist.hasHydrated()) {
+    const persist = useSessionStore.persist;
+    if (!persist) {
       setHydrated(true);
       return;
     }
 
-    return useSessionStore.persist.onFinishHydration(() => setHydrated(true));
+    const finish = () => setHydrated(true);
+
+    if (persist.hasHydrated()) {
+      finish();
+      return;
+    }
+
+    void persist.rehydrate();
+    return persist.onFinishHydration(finish);
   }, []);
 
   return hydrated;

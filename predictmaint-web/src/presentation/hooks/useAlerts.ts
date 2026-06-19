@@ -15,6 +15,8 @@ export function useActiveAlerts(options?: { poll?: boolean }) {
   });
 }
 
-export function useRecentAlerts(limit = 10) {
-  return useSWR(['/alerts/recent', limit], () => alertService.findRecent(limit));
+export function useRecentAlerts(limit = 10, options?: { poll?: boolean }) {
+  return useSWR(['/alerts/recent', limit], () => alertService.findRecent(limit), {
+    refreshInterval: options?.poll === false ? 0 : LIVE_REFRESH_MS,
+  });
 }

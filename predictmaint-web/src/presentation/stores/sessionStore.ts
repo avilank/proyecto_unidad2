@@ -1,6 +1,6 @@
 import type { User } from '@/core/entities';
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import { setApiTokenGetter } from '@/infrastructure/http/clients/apiClient';
 
 interface SessionState {
@@ -21,6 +21,16 @@ export const useSessionStore = create<SessionState>()(
     {
       name: 'predictmaint-session',
       partialize: (state) => ({ token: state.token, user: state.user }),
+      skipHydration: true,
+      storage: createJSONStorage(() =>
+        typeof window !== 'undefined'
+          ? window.localStorage
+          : {
+              getItem: () => null,
+              setItem: () => {},
+              removeItem: () => {},
+            },
+      ),
     },
   ),
 );

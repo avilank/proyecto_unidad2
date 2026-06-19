@@ -15,7 +15,16 @@ import type {
   Technician,
   User,
 } from '@/core/entities';
-import type { DashboardApiResponse, RecurrentMachineFault } from '@/core/types/api';
+import type {
+  DashboardApiResponse,
+  FaultByType,
+  MachineRecurrence,
+  NotificationLogEntry,
+  PaginatedResponse,
+  RecurrentMachineFault,
+  SensorTrendPoint,
+  UnattendedOrder,
+} from '@/core/types/api';
 
 export interface LoginCredentials {
   email: string;
@@ -78,14 +87,17 @@ export interface ITechnicianRepository {
 
 export interface IAnalyticsRepository {
   getDashboardKpis(): Promise<DashboardApiResponse>;
-  getSummary(): Promise<AnalyticsSummary>;
+  getSummary(range?: string): Promise<AnalyticsSummary>;
   getRepetitiveFaults(): Promise<RecurrentMachineFault[]>;
-  getFaultsByType(range?: string): Promise<{ tipoFallo: string; count: number }[]>;
+  getMachineRecurrence(days?: number): Promise<MachineRecurrence[]>;
+  getUnattendedOrders(): Promise<UnattendedOrder[]>;
+  getNotificationLog(limit?: number): Promise<PaginatedResponse<NotificationLogEntry>>;
+  getFaultsByType(range?: string): Promise<FaultByType[]>;
   getSensorTrend(
     variable?: string,
     hours?: number,
     maquinaId?: string,
-  ): Promise<{ timestamp: string; value: number; maquinaId: string }[]>;
+  ): Promise<SensorTrendPoint[]>;
 }
 
 export interface IConfigRepository {

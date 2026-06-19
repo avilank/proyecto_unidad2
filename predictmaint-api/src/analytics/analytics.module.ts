@@ -9,6 +9,9 @@ import { ModeloMl } from '../database/models/modelo-ml.model';
 import { Orden } from '../database/models/orden.model';
 import { PrediccionFallo } from '../database/models/prediccion-fallo.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
+import { Tecnico } from '../database/models/tecnico.model';
+import { Usuario } from '../database/models/usuario.model';
+import { RespuestaRecomendacion } from '../database/models/respuesta-recomendacion.model';
 import { OrdersModule } from '../orders/orders.module';
 import { AnalyticsController } from './analytics.controller';
 import { AnalyticsService } from './analytics.service';
@@ -25,6 +28,9 @@ import { AnalyticsService } from './analytics.service';
       TipoFallo,
       LecturaSensor,
       ModeloMl,
+      Tecnico,
+      Usuario,
+      RespuestaRecomendacion,
     ]),
     OrdersModule,
   ],

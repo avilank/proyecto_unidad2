@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Alert, Machine } from '@/core/entities';
 import { Topbar } from '@/components/common/topbar';
-import { KpiCard } from '@/components/ui/kpi-card';
+import { AnimatedFaultKpiCard, AnimatedKpiCard } from '@/components/ui/animated-kpi-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -207,22 +207,23 @@ export function MonitoringView() {
       </p>
 
       <div className="grid grid-cols-2 items-stretch gap-4 sm:grid-cols-3 xl:grid-cols-6">
-        <div className="h-full min-w-0">
-          <KpiCard
-            tone="accent"
-            icon={Radio}
-            value={kpis?.totalMaquinas ?? machineList.length}
-            label="Máquinas activas"
-            className="h-full"
-          />
-        </div>
+        <AnimatedKpiCard
+          index={0}
+          pulseKey={stream.readingTick}
+          tone="accent"
+          icon={Radio}
+          value={kpis?.totalMaquinas ?? machineList.length}
+          label="Máquinas activas"
+        />
         {FAULT_TYPE_ORDER.map((tipo, index) => (
-          <FaultTypeKpiCard
+          <AnimatedFaultKpiCard
             key={tipo}
             tipo={tipo}
             count={fallosPorTipo[tipo]}
             index={index}
             pulseKey={stream.readingTick}
+            icon={FAULT_ICONS[tipo] ?? Radio}
+            tone={FAULT_KPI_TONE[tipo] ?? 'accent'}
           />
         ))}
       </div>
@@ -350,47 +351,6 @@ export function MonitoringView() {
         </div>
       )}
       </div>
-    </div>
-  );
-}
-
-function FaultTypeKpiCard({
-  tipo,
-  count,
-  index,
-  pulseKey,
-}: {
-  tipo: string;
-  count: number;
-  index: number;
-  pulseKey: number;
-}) {
-  const prev = useRef({ count, pulseKey });
-  const [flash, setFlash] = useState(false);
-  const Icon = FAULT_ICONS[tipo] ?? Radio;
-
-  useEffect(() => {
-    if (prev.current.count !== count && pulseKey > 0) {
-      setFlash(true);
-      const t = setTimeout(() => setFlash(false), 650);
-      prev.current = { count, pulseKey };
-      return () => clearTimeout(t);
-    }
-    prev.current = { count, pulseKey };
-  }, [count, pulseKey]);
-
-  return (
-    <div
-      className="h-full min-w-0 animate-slide-in-left"
-      style={{ animationDelay: `${(index + 1) * 80}ms` }}
-    >
-      <KpiCard
-        tone={FAULT_KPI_TONE[tipo] ?? 'accent'}
-        icon={Icon}
-        value={count}
-        label={tipo}
-        className={cn('h-full', flash && 'animate-value-flash ring-1 ring-accent/40')}
-      />
     </div>
   );
 }

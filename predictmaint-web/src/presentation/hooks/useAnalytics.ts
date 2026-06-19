@@ -25,8 +25,24 @@ export function useSensorTrend(variable = 'rotationalSpeed', hours = 24, maquina
   );
 }
 
-export function useAnalyticsSummary() {
-  return useSWR('/analytics/summary', () => analyticsService.getSummary());
+export function useAnalyticsSummary(range = 'week') {
+  return useSWR(['/analytics/summary', range], () => analyticsService.getSummary(range));
+}
+
+export function useUnattendedOrders() {
+  return useSWR('/analytics/unattended', () => analyticsService.getUnattendedOrders(), {
+    refreshInterval: 15000,
+  });
+}
+
+export function useMachineRecurrence(days = 30) {
+  return useSWR(['/analytics/machine-recurrence', days], () =>
+    analyticsService.getMachineRecurrence(days),
+  );
+}
+
+export function useNotificationLog(limit = 50) {
+  return useSWR(['/notifications/log', limit], () => analyticsService.getNotificationLog(limit));
 }
 
 export function useRecurrentFaults() {

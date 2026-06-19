@@ -6,6 +6,7 @@ import { EventoOrden } from '../database/models/evento-orden.model';
 import { LecturaSensor } from '../database/models/lectura-sensor.model';
 import { Maquina } from '../database/models/maquina.model';
 import { ModeloMl } from '../database/models/modelo-ml.model';
+import { Alerta } from '../database/models/alerta.model';
 import { Orden } from '../database/models/orden.model';
 import { SolucionAplicada } from '../database/models/solucion-aplicada.model';
 import { ObservacionTecnica } from '../database/models/observacion-tecnica.model';
@@ -21,6 +22,7 @@ import { OrdersService } from './orders.service';
   imports: [
     SequelizeModule.forFeature([
       Orden,
+      Alerta,
       EventoOrden,
       Maquina,
       AnalisisFallo,

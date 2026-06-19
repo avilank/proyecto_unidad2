@@ -47,6 +47,35 @@ export interface FaultByType {
   count: number;
 }
 
+export interface UnattendedOrder {
+  id: string;
+  alertaId?: string | null;
+  maquinaId: string;
+  tecnico: string;
+  nivelRiesgo: string;
+  minutosSinAtender: number;
+  detectadoEn: string;
+}
+
+export interface MachineRecurrence {
+  maquinaId: string;
+  fallos: number;
+  ventanaDias: number;
+}
+
+export interface NotificationLogEntry {
+  id: number;
+  tecnicoId: number | null;
+  tecnico: string | null;
+  ordenId: string | null;
+  maquinas: string | null;
+  motivo: string | null;
+  canal: string;
+  tipoEnvio: string | null;
+  estado: string;
+  enviadoEn: string;
+}
+
 export interface SensorTrendPoint {
   timestamp: string;
   value: number;

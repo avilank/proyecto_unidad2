@@ -2,6 +2,9 @@ import type { AnalyticsSummary } from '@/core/entities';
 import type {
   DashboardApiResponse,
   FaultByType,
+  MachineRecurrence,
+  NotificationLogEntry,
+  PaginatedResponse,
   RecurrentMachineFault,
 } from '@/core/types/api';
 import { analyticsRepository } from '@/infrastructure/repositories/analytics.repository';
@@ -11,12 +14,24 @@ export class AnalyticsService {
     return analyticsRepository.getDashboardKpis();
   }
 
-  getSummary(): Promise<AnalyticsSummary> {
-    return analyticsRepository.getSummary();
+  getSummary(range = 'week'): Promise<AnalyticsSummary> {
+    return analyticsRepository.getSummary(range);
   }
 
   getRecurrentMachines(): Promise<RecurrentMachineFault[]> {
     return analyticsRepository.getRepetitiveFaults();
+  }
+
+  getMachineRecurrence(days = 30): Promise<MachineRecurrence[]> {
+    return analyticsRepository.getMachineRecurrence(days);
+  }
+
+  getUnattendedOrders() {
+    return analyticsRepository.getUnattendedOrders();
+  }
+
+  getNotificationLog(limit = 50): Promise<PaginatedResponse<NotificationLogEntry>> {
+    return analyticsRepository.getNotificationLog(limit);
   }
 
   getFaultsByType(range = 'week'): Promise<FaultByType[]> {

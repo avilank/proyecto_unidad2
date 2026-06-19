@@ -38,6 +38,12 @@ export class AnalyticsController {
     return this.analyticsService.getRecurrentMachines();
   }
 
+  @Get('machine-recurrence')
+  @ApiOperation({ summary: 'Ranking de máquinas por fallos en ventana temporal' })
+  getMachineRecurrence(@Query('days') days = '30') {
+    return this.analyticsService.getMachineRecurrence(Number(days));
+  }
+
   @Get('sensor-trend')
   @ApiOperation({ summary: 'Serie temporal de sensores' })
   getSensorTrend(

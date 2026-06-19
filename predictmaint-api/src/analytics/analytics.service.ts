@@ -11,9 +11,18 @@ import { ModeloMl } from '../database/models/modelo-ml.model';
 import { Orden } from '../database/models/orden.model';
 import { PrediccionFallo } from '../database/models/prediccion-fallo.model';
 import { RespuestaRecomendacion } from '../database/models/respuesta-recomendacion.model';
+import { Tecnico } from '../database/models/tecnico.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
+import { Usuario } from '../database/models/usuario.model';
 import { findMaquinaByCodigo } from '../common/utils/maquina.util';
+import { tecnicoNombre } from '../common/utils/tecnico-display.util';
 import { OrdersService } from '../orders/orders.service';
+
+function tecnicoNombreCorto(nombre: string): string {
+  const parts = nombre.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return nombre;
+  return `${parts[0][0]}. ${parts[parts.length - 1]}`;
+}
 
 @Injectable()
 export class AnalyticsService {
@@ -179,7 +188,19 @@ export class AnalyticsService {
         })
       : [];
     const conRag = respuestas.length;
-    const sinAtender = ordenes.filter((o) => o.estado === EstadoOrden.PENDIENTE).length;
+    const respondedOrderIds = new Set(
+      (
+        orderIds.length
+          ? await RespuestaRecomendacion.findAll({
+              where: { idOrden: orderIds },
+              attributes: ['idOrden'],
+            })
+          : []
+      ).map((r) => r.idOrden),
+    );
+    const sinAtender = ordenes.filter(
+      (o) => o.estado === EstadoOrden.PENDIENTE && !respondedOrderIds.has(o.idOrden),
+    ).length;
 
     return {
       totalAlertas: ordenes.length,
@@ -208,7 +229,7 @@ export class AnalyticsService {
       const codigo = lider?.tipoFallo?.codigo ?? 'RNF';
       counts[codigo] = (counts[codigo] ?? 0) + 1;
     }
-    return Object.entries(counts).map(([tipo, total]) => ({ tipo, total }));
+    return Object.entries(counts).map(([tipoFallo, count]) => ({ tipoFallo, count }));
   }
 
   async getRecentOrders(limit = 10) {
@@ -229,10 +250,74 @@ export class AnalyticsService {
   async getUnattended() {
     const rows = await this.ordenModel.findAll({
       where: { estado: EstadoOrden.PENDIENTE },
-      limit: 20,
-      order: [['fechaCreacion', 'DESC']],
+      limit: 50,
+      order: [['fechaCreacion', 'ASC']],
+      include: [
+        { model: Maquina, attributes: ['codigo'] },
+        {
+          model: Tecnico,
+          include: [{ model: Usuario, attributes: ['nombres', 'apellidos'] }],
+        },
+        { model: AnalisisFallo, attributes: ['nivelRiesgo'] },
+        {
+          model: Alerta,
+          required: false,
+          attributes: ['codigo'],
+        },
+        {
+          model: RespuestaRecomendacion,
+          required: false,
+          attributes: ['idRespuesta', 'decision'],
+        },
+      ],
     });
-    return rows.map((o) => ({ id: o.codigo, maquinaId: o.idMaquina, estado: o.estado }));
+
+    const now = Date.now();
+    return rows
+      .filter((o) => !o.respuestasRag?.length)
+      .slice(0, 20)
+      .map((o) => {
+        const nombreTecnico = o.tecnico ? tecnicoNombre(o.tecnico) : 'Sin asignar';
+        return {
+          id: o.codigo,
+          alertaId: o.alertas?.[0]?.codigo ?? null,
+          maquinaId: o.maquina?.codigo ?? String(o.idMaquina),
+          tecnico: o.tecnico ? tecnicoNombreCorto(nombreTecnico) : 'Sin asignar',
+          nivelRiesgo: o.analisis?.nivelRiesgo ?? NivelRiesgo.MEDIUM,
+          minutosSinAtender: Math.max(
+            0,
+            Math.round((now - o.fechaCreacion.getTime()) / 60_000),
+          ),
+          detectadoEn: o.fechaCreacion.toISOString(),
+        };
+      });
+  }
+
+  async getMachineRecurrence(days = 30) {
+    const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const ordenes = await this.ordenModel.findAll({
+      where: { fechaCreacion: { [Op.gte]: from } },
+      include: [
+        { model: Maquina, attributes: ['codigo'] },
+        {
+          model: AnalisisFallo,
+          where: { prediccion: PrediccionBinaria.FALLA },
+          required: true,
+        },
+      ],
+    });
+
+    const counts = new Map<string, number>();
+    for (const o of ordenes) {
+      const codigo = o.maquina?.codigo;
+      if (!codigo) continue;
+      counts.set(codigo, (counts.get(codigo) ?? 0) + 1);
+    }
+
+    return [...counts.entries()]
+      .map(([maquinaId, fallos]) => ({ maquinaId, fallos, ventanaDias: days }))
+      .sort((a, b) => b.fallos - a.fallos)
+      .slice(0, 10);
   }
 
   async getRecurrentMachines() {

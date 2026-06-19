@@ -1,10 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op } from 'sequelize';
-import { EstadoOrden } from '../common/enums';
+import { EstadoOrden, EstadoAlerta } from '../common/enums';
 import { findMaquinaByCodigo } from '../common/utils/maquina.util';
 import { resolveModeloId } from '../common/utils/modelo-ml.util';
 import { tecnicoNombre } from '../common/utils/tecnico-display.util';
+import { Alerta } from '../database/models/alerta.model';
 import { AnalisisFallo } from '../database/models/analisis-fallo.model';
 import { ClasificacionFallo } from '../database/models/clasificacion-fallo.model';
 import { EventoOrden } from '../database/models/evento-orden.model';
@@ -25,6 +26,7 @@ export class RagService {
     @InjectModel(EventoOrden) private readonly eventoModel: typeof EventoOrden,
     @InjectModel(ClasificacionFallo) private readonly clasificacionModel: typeof ClasificacionFallo,
     @InjectModel(RespuestaRecomendacion) private readonly respuestaModel: typeof RespuestaRecomendacion,
+    @InjectModel(Alerta) private readonly alertaModel: typeof Alerta,
     private readonly mlGateway: MlGatewayService,
   ) {}
 
@@ -114,6 +116,15 @@ export class RagService {
     });
     if (orden.estado === EstadoOrden.PENDIENTE) {
       await orden.update({ estado: EstadoOrden.EN_PROGRESO, fechaInicio: new Date() });
+      await this.alertaModel.update(
+        { estado: EstadoAlerta.EN_PROGRESO },
+        {
+          where: {
+            idOrden: orden.idOrden,
+            estado: { [Op.ne]: EstadoAlerta.FINALIZADO },
+          },
+        },
+      );
       await this.eventoModel.create({
         idOrden: orden.idOrden,
         etapa: 'en_progreso',

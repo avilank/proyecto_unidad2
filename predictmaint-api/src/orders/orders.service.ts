@@ -6,12 +6,13 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op } from 'sequelize';
-import { EstadoOrden } from '../common/enums';
+import { EstadoOrden, EstadoAlerta } from '../common/enums';
 import { paginate, PaginationQueryDto } from '../common/dto/pagination.dto';
 import { generateOrderCodigo } from '../common/utils/id-generator.util';
 import { findMaquinaByCodigo } from '../common/utils/maquina.util';
 import { modeloSlug } from '../common/utils/modelo-ml.util';
 import { tecnicoIniciales, tecnicoNombre } from '../common/utils/tecnico-display.util';
+import { Alerta } from '../database/models/alerta.model';
 import { AnalisisFallo } from '../database/models/analisis-fallo.model';
 import { ClasificacionFallo } from '../database/models/clasificacion-fallo.model';
 import { EventoOrden } from '../database/models/evento-orden.model';
@@ -92,9 +93,22 @@ export class OrdersService {
     @InjectModel(Maquina) private readonly maquinaModel: typeof Maquina,
     @InjectModel(LecturaSensor) private readonly lecturaModel: typeof LecturaSensor,
     @InjectModel(AnalisisFallo) private readonly analisisModel: typeof AnalisisFallo,
+    @InjectModel(Alerta) private readonly alertaModel: typeof Alerta,
     private readonly machinesService: MachinesService,
     private readonly techniciansService: TechniciansService,
   ) {}
+
+  private async syncAlertEstadoForOrder(idOrden: number, estado: EstadoAlerta) {
+    await this.alertaModel.update(
+      { estado },
+      {
+        where: {
+          idOrden,
+          estado: { [Op.ne]: EstadoAlerta.FINALIZADO },
+        },
+      },
+    );
+  }
 
   toResponse(o: Orden) {
     const analisis = o.analisis;
@@ -334,6 +348,12 @@ export class OrdersService {
       ...(dto.estado === EstadoOrden.EN_PROGRESO && { fechaInicio: new Date() }),
       ...(dto.estado === EstadoOrden.FINALIZADO && { fechaFin: new Date() }),
     });
+    if (dto.estado === EstadoOrden.EN_PROGRESO) {
+      await this.syncAlertEstadoForOrder(o.idOrden, EstadoAlerta.EN_PROGRESO);
+    }
+    if (dto.estado === EstadoOrden.FINALIZADO) {
+      await this.syncAlertEstadoForOrder(o.idOrden, EstadoAlerta.FINALIZADO);
+    }
     await this.eventoModel.create({
       idOrden: o.idOrden,
       etapa: dto.estado === EstadoOrden.EN_PROGRESO ? 'en_progreso' : 'finalizado',
@@ -380,6 +400,7 @@ export class OrdersService {
         ? { observaciones: dto.comentario.trim() }
         : { observaciones: dto.descripcion }),
     });
+    await this.syncAlertEstadoForOrder(o.idOrden, EstadoAlerta.FINALIZADO);
     await this.eventoModel.create({
       idOrden: o.idOrden,
       etapa: 'finalizado',

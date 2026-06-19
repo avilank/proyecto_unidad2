@@ -261,10 +261,12 @@ export interface DashboardKpis {
 }
 
 export interface AnalyticsSummary {
-  efectividadRag: number | null;
-  tiempoMedioResolucion: number | null;
-  mensajesEnviados: number;
-  fallosRepetitivos: number;
+  totalAlertas: number;
+  conRag: number;
+  sinRag: number;
+  pctConRag: number;
+  sinAtender: number;
+  range?: string;
 }
 
 export interface MlModelConfig {

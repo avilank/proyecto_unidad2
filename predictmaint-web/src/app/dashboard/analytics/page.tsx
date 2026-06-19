@@ -1,17 +1,7 @@
 'use client';
 
-import { RawJsonView } from '@/components/common/RawJsonView';
-import { useAnalyticsSummary } from '@/presentation/hooks/useAnalytics';
+import { AnalyticsView } from '@/components/dashboard/analytics-view';
 
 export default function AnalyticsPage() {
-  const summary = useAnalyticsSummary();
-
-  return (
-    <RawJsonView
-      title="Analítica y Reportes"
-      isLoading={summary.isLoading}
-      error={summary.error}
-      data={summary.data}
-    />
-  );
+  return <AnalyticsView />;
 }
