@@ -228,12 +228,12 @@ export function OrdersHistoryView() {
                   },
                   {
                     key: 'algo',
-                    header: 'Algoritmo',
+                    header: 'Algoritmo S-2',
                     render: (r) => r.algoritmoClasificador ?? '—',
                   },
                   {
                     key: 'conf',
-                    header: 'Confianza',
+                    header: 'Confianza S-2',
                     render: (r) => (r.confianza != null ? `${r.confianza.toFixed(1)}%` : '—'),
                   },
                   {

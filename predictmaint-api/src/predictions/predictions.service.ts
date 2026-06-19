@@ -178,7 +178,7 @@ export class PredictionsService {
         idAnalisis: orden.idAnalisis,
         idTipoFallo: tipo.idTipoFallo,
         idModelo,
-        confianza: result.confianza,
+        confianza: m.confianza ?? result.confianza,
         probHdf: m.probHdf,
         probPwf: m.probPwf,
         probTwf: m.probTwf,

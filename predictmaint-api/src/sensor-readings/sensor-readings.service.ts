@@ -419,7 +419,7 @@ export class SensorReadingsService {
           idAnalisis: analisis.idAnalisis,
           idTipoFallo: tipoModelo.idTipoFallo,
           idModelo,
-          confianza: classifyResult.confianza,
+          confianza: m.confianza ?? classifyResult.confianza,
           probHdf: m.probHdf,
           probPwf: m.probPwf,
           probTwf: m.probTwf,

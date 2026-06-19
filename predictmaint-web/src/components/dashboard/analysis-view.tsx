@@ -15,7 +15,10 @@ import { useBinaryPredictions, useMulticlassPredictions } from '@/presentation/h
 import { useRagPlan } from '@/presentation/hooks/useRag';
 import { ragService } from '@/application/services/rag.service';
 import { EstadoOrden } from '@/core/types';
+import { KpiCard } from '@/components/ui/kpi-card';
+import { FAULT_ICONS, FAULT_KPI_TONE, FAULT_LABELS } from '@/lib/constants/fault-types';
 import { cn } from '@/lib/utils/cn';
+import { Activity, Gauge, ShieldCheck, Target } from 'lucide-react';
 
 const UMBRAL_FALLA = 0.5;
 
@@ -185,7 +188,7 @@ export function AnalysisView({
         </span>
       </div>
 
-      <div className="flex bg-bg">
+      <div className="flex bg-bg ">
         {TABS.map((t) => {
           const enabled = tabEnabled(t.key);
           const active = tab === t.key;
@@ -196,7 +199,7 @@ export function AnalysisView({
               disabled={!enabled}
               onClick={() => enabled && setTab(t.key)}
               className={cn(
-                'min-w-0 flex-1 px-4 py-3 text-left text-sm font-semibold transition-colors',
+                'min-w-0 flex-1 px-4 py-3 text-center text-sm font-semibold transition-colors',
                 active
                   ? 'border-b-2 border-b-accent bg-surface/40 text-accent'
                   : enabled
@@ -212,11 +215,11 @@ export function AnalysisView({
                     : 'Requiere S-2 completado'}
                 </span>
               )}
-              {enabled && t.key === 's2' && s1Falla && (
+              {/* {enabled && t.key === 's2' && s1Falla && (
                 <span className="mt-0.5 block text-[10px] font-normal text-success">
                   Falla confirmada — puede clasificar
                 </span>
-              )}
+              )} */}
             </button>
           );
         })}
@@ -447,28 +450,66 @@ function ClassificationTab({
   if (isLoading) return <Skeleton className="h-[380px] w-full" />;
 
   const lider = data?.items.find((m) => m.esLider);
+  const items = data?.items ?? [];
+  const tipoPredicho = data?.tipoPredicho ?? lider?.tipoPredicho ?? '—';
+  const modeloLider = data?.modeloLider ?? lider?.modelo ?? null;
+
+  const voteCounts = items.reduce<Record<string, number>>((acc, m) => {
+    if (m.tipoPredicho) acc[m.tipoPredicho] = (acc[m.tipoPredicho] ?? 0) + 1;
+    return acc;
+  }, {});
+  const consensusEntry = Object.entries(voteCounts).sort((a, b) => b[1] - a[1])[0];
+  const consensusType = consensusEntry?.[0] ?? '—';
+  const consensusCount = consensusEntry?.[1] ?? 0;
+  const modelTotal = items.length || 3;
+  const divergentModels = items.filter((m) => m.diverge).map((m) => prettyModel(m.modelo));
 
   return (
     <div className="space-y-4">
-      {lider && (
-        <div className="rounded-md bg-accent/5 px-4 py-3 text-sm">
-          <p className="font-semibold text-ink">
-            Modelo líder S-2: {prettyModel(data?.modeloLider ?? lider.modelo)}
-          </p>
-          <p className="mt-1 text-ink-muted">
-            Tipo predicho <strong>{data?.tipoPredicho ?? lider.tipoPredicho ?? '—'}</strong>
-            {data?.confianza != null ? ` · ${data.confianza.toFixed(1)}% confianza` : ''}
-            {data?.agreement ? ` · agreement ${data.agreement}` : ''}
-          </p>
-        </div>
-      )}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <KpiCard
+          icon={FAULT_ICONS[tipoPredicho] ?? Target}
+          tone={FAULT_KPI_TONE[tipoPredicho] ?? 'accent'}
+          value={tipoPredicho}
+          label=""
+          sublabel={FAULT_LABELS[tipoPredicho]}
+        />
+        <KpiCard
+          icon={Gauge}
+          tone="warning"
+          value={data?.confianza != null ? `${data.confianza.toFixed(1)}%` : '—'}
+          label=""
+          sublabel={
+            modeloLider ? `${prettyModel(modeloLider)} — mayor confianza` : 'Modelo líder S-2'
+          }
+        />
+        <KpiCard
+          icon={Activity}
+          tone={FAULT_KPI_TONE[consensusType] ?? 'warning'}
+          value={consensusType}
+          label=""
+          sublabel={`${consensusCount} de ${modelTotal} modelos coinciden`}
+        />
+        <KpiCard
+          icon={ShieldCheck}
+          tone={agreementTone(data?.agreement)}
+          value={data?.agreement ?? '—'}
+          label=""
+          sublabel={
+            divergentModels.length
+              ? `${consensusCount}/${modelTotal} coinciden · ${divergentModels.join(', ')} diverge`
+              : `${consensusCount}/${modelTotal} coinciden`
+          }
+        />
+      </div>
+
       <div
-        className={`rounded-md  px-4 py-3 text-sm ${
+        className={`rounded-md px-4 py-3 text-sm ${
           tecnico
-            ? 'border-success/30 bg-success/5'
+            ? ' border-success/30 bg-success/5'
             : tecnicoPendiente
-              ? 'border-warning/30 bg-warning/5'
-              : 'border-border-soft bg-surface-2'
+              ? ' border-warning/30 bg-warning/5'
+              : ' border-border-soft bg-surface-2'
         }`}
       >
         {tecnico ? (
@@ -482,34 +523,6 @@ function ClassificationTab({
             programado por el sistema.
           </p>
         ) : null}
-      </div>
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="py-4">
-            <Metric label="Tipo Predicho" value={data?.tipoPredicho ?? '—'} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-4">
-            <Metric
-              label="Confianza"
-              value={data?.confianza != null ? `${data.confianza.toFixed(1)}%` : '—'}
-            />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-4">
-            <Metric
-              label="Modelo líder"
-              value={data?.modeloLider ? prettyModel(data.modeloLider) : '—'}
-            />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-4">
-            <Metric label="Agreement" value={data?.agreement ?? '—'} />
-          </CardContent>
-        </Card>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-3">
@@ -985,4 +998,19 @@ function prettyModel(model: string) {
     svm: 'SVM',
   };
   return map[model] ?? model;
+}
+
+function agreementTone(
+  agreement: string | null | undefined,
+): 'accent' | 'danger' | 'success' | 'warning' {
+  switch (agreement?.toUpperCase()) {
+    case 'ALTO':
+      return 'success';
+    case 'MEDIO':
+      return 'warning';
+    case 'BAJO':
+      return 'danger';
+    default:
+      return 'accent';
+  }
 }

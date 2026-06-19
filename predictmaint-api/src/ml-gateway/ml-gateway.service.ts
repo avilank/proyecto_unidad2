@@ -40,6 +40,7 @@ export interface MlPredictResponse {
 export interface MlMulticlassModelResult {
   modelo: string;
   tipoPredicho: string;
+  confianza?: number;
   probHdf?: number;
   probPwf?: number;
   probTwf?: number;

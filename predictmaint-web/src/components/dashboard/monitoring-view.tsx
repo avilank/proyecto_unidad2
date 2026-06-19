@@ -543,14 +543,66 @@ function LiveMetric({
   );
 }
 
+function alertCardStyles(nivel?: string) {
+  switch (nivel?.toUpperCase()) {
+    case 'CRITICAL':
+      return {
+        border: 'rgba(239, 68, 68, 0.55)',
+        background: 'rgba(239, 68, 68, 0.07)',
+      };
+    case 'HIGH':
+      return {
+        border: 'rgba(251, 146, 60, 0.55)',
+        background: 'rgba(251, 146, 60, 0.07)',
+      };
+    case 'MEDIUM':
+      return {
+        border: 'rgba(245, 158, 11, 0.55)',
+        background: 'rgba(245, 158, 11, 0.07)',
+      };
+    case 'LOW':
+      return {
+        border: 'rgba(34, 197, 94, 0.5)',
+        background: 'rgba(34, 197, 94, 0.07)',
+      };
+    default:
+      return {
+        border: CARD_BORDER_FAULT,
+        background: CARD_BG_FAULT,
+      };
+  }
+}
+
+function alertBadgeVariant(nivel?: string): 'critical' | 'high' | 'warning' | 'success' | 'default' {
+  switch (nivel?.toUpperCase()) {
+    case 'CRITICAL':
+      return 'critical';
+    case 'HIGH':
+      return 'high';
+    case 'MEDIUM':
+      return 'warning';
+    case 'LOW':
+      return 'success';
+    default:
+      return 'warning';
+  }
+}
+
 function ActiveAlertCard({ alert }: { alert: Alert }) {
   const ruleLabel = [alert.reglaCodigo, alert.tipoFallo].filter(Boolean).join(' — ');
+  const cardStyle = alertCardStyles(alert.nivel);
 
   return (
-    <div className="rounded-lg border border-warning/50 bg-surface p-4">
+    <div
+      className="rounded-lg p-4"
+      style={{
+        border: `1px solid ${cardStyle.border}`,
+        backgroundColor: cardStyle.background,
+      }}
+    >
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-sm font-bold text-ink">{alert.id}</span>
-        <Badge variant="warning">Falla detectada</Badge>
+        <Badge variant={alertBadgeVariant(alert.nivel)}>Falla detectada</Badge>
       </div>
       <p className="mt-1 text-xs text-ink-muted">
         {alert.maquinaId} · {timeAgo(alert.creadoEn)}

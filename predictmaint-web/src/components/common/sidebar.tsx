@@ -20,7 +20,7 @@ const NAV = [
   { href: '/dashboard/orders', label: 'Historial', icon: History },
   { href: '/dashboard/technicians', label: 'Gestión de Técnicos', icon: Users },
   { href: '/dashboard/analytics', label: 'Analítica y Reportes', icon: BarChart3 },
-  { href: '/dashboard/settings', label: 'Configuración', icon: Settings },
+  // { href: '/dashboard/settings', label: 'Configuración', icon: Settings },
 ];
 
 export function Sidebar() {

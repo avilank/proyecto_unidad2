@@ -58,6 +58,21 @@ def _risk_level(ensemble_avg: float) -> str:
     return "CRITICAL"
 
 
+S2_LEADER_MODEL = "lightgbm"
+S2_LEADER_PRIORITY = {"lightgbm": 3, "svm": 2, "decision_tree": 1}
+
+
+def _pick_s2_leader(confidences: list[float], model_names: tuple[str, ...]) -> int:
+    """Líder S-2: LightGBM (mejor métrica offline); fallback por confianza."""
+    try:
+        return model_names.index(S2_LEADER_MODEL)
+    except ValueError:
+        return max(
+            range(len(confidences)),
+            key=lambda i: (confidences[i], S2_LEADER_PRIORITY.get(model_names[i], 0)),
+        )
+
+
 def _agreement_label(votes: list[str]) -> str:
     if not votes:
         return "BAJO"
@@ -180,6 +195,7 @@ def classify(reading: SensorReading) -> dict[str, Any]:
             {
                 "modelo": name,
                 "tipoPredicho": tipo_predicho,
+                "confianza": round(confidence, 1),
                 "probHdf": round(prob_map.get("HDF", 0.0) * 100, 1),
                 "probPwf": round(prob_map.get("PWF", 0.0) * 100, 1),
                 "probTwf": round(prob_map.get("TWF", 0.0) * 100, 1),
@@ -199,7 +215,7 @@ def classify(reading: SensorReading) -> dict[str, Any]:
 
     agreement = _agreement_label(votes)
     consensus_type = max(set(votes), key=votes.count)
-    leader_idx = max(range(len(confidences)), key=lambda i: confidences[i])
+    leader_idx = _pick_s2_leader(confidences, S2_MODELS)
     leader = modelos_resp[leader_idx]
     leader["esLider"] = True
     for item in modelos_resp:
