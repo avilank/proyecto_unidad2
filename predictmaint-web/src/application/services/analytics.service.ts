@@ -23,8 +23,8 @@ export class AnalyticsService {
     return analyticsRepository.getFaultsByType(range);
   }
 
-  getSensorTrend(variable = 'rotationalSpeed', hours = 24) {
-    return analyticsRepository.getSensorTrend(variable, hours);
+  getSensorTrend(variable = 'rotationalSpeed', hours = 24, maquinaId?: string) {
+    return analyticsRepository.getSensorTrend(variable, hours, maquinaId);
   }
 }
 

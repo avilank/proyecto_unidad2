@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, Cpu, Gem, Settings } from 'lucide-react';
 import type { Alert, Machine } from '@/core/entities';
@@ -14,35 +15,46 @@ import {
   MachineStatusPanel,
   SensorChartPanel,
 } from '@/components/dashboard/dashboard-panels';
-import { useDashboard, useFaultsByType, useSensorTrend } from '@/presentation/hooks/useAnalytics';
-import { useRecentAlerts } from '@/presentation/hooks/useAlerts';
+import { useDashboard, useSensorTrend } from '@/presentation/hooks/useAnalytics';
+import { useActiveAlerts, useRecentAlerts } from '@/presentation/hooks/useAlerts';
 import { useMachines } from '@/presentation/hooks/useMachines';
-
-function formatDate() {
-  return new Date().toLocaleDateString('es-PE', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-}
+import {
+  buildFallosPorTipoHoy,
+  calcTasaFalloGlobal,
+  formatDashboardDate,
+  formatFaultTypeCell,
+  formatModelLabel,
+  getCurrentTurn,
+} from '@/lib/utils/dashboard';
 
 export function DashboardView() {
   const dashboard = useDashboard();
-  const faults = useFaultsByType('week');
-  const trend = useSensorTrend('rotationalSpeed', 24);
+  const [sensorVariable, setSensorVariable] = useState('rotationalSpeed');
+  const [sensorMaquinaId, setSensorMaquinaId] = useState('');
+  const trend = useSensorTrend(sensorVariable, 24, sensorMaquinaId || undefined);
   const machines = useMachines();
+  const activeAlerts = useActiveAlerts();
   const alerts = useRecentAlerts(5);
 
   const d = dashboard.data;
   const machineList = machines.data ?? [];
+  const alertList = activeAlerts.data ?? [];
+
+  const fallosHoy = useMemo(() => buildFallosPorTipoHoy(d?.fallosPorTipoHoy), [d?.fallosPorTipoHoy]);
+
+  const tasaFallo =
+    d?.tasaFalloGlobal ??
+    calcTasaFalloGlobal(d?.fallasDetectadasHoy, d?.totalMaquinas) ??
+    null;
+
+  const operacionCount = machineList.filter((m) => m.estadoOperativo === 'operacion').length;
 
   return (
     <div className="flex min-h-full flex-col">
       <Topbar
         flush
         title="Dashboard General"
-        subtitle={`${formatDate()} | Turno Mañana`}
+        subtitle={`${formatDashboardDate()} | ${getCurrentTurn()}`}
         badge={
           d?.alertasActivas
             ? { label: `${d.alertasActivas} Alertas activas`, variant: 'danger' }
@@ -57,41 +69,53 @@ export function DashboardView() {
           icon={Settings}
           value={d?.totalMaquinas ?? '—'}
           label="Máquinas Monitoreadas"
-          sublabel={`${machineList.filter((m) => m.estadoOperativo === 'operacion').length} en operación`}
+          sublabel={`${operacionCount || d?.totalMaquinas || 0} en operación`}
         />
         <KpiCard
           tone="danger"
           icon={AlertTriangle}
-          value={d?.fallosHoy ?? '—'}
+          value={d?.fallasDetectadasHoy ?? d?.fallosHoy ?? '—'}
           label="Fallos Detectados Hoy"
-          sublabel="Según órdenes del día"
+          sublabel={`${d?.criticosHoy ?? 0} criticos / ${d?.moderadosHoy ?? 0} moderados`}
         />
         <KpiCard
           tone="success"
           icon={Gem}
-          value={d ? `${(d.tasaDeteccion * 100).toFixed(1)}%` : '—'}
+          value={tasaFallo != null ? `${tasaFallo.toFixed(1)}%` : '—'}
           label="Tasa de Fallo Global"
-          sublabel="Umbral: 5% OK"
+          sublabel={tasaFallo != null && tasaFallo <= 5 ? 'Umbral: 5% OK' : 'Umbral: 5% superado'}
         />
         <KpiCard
           tone="warning"
           icon={Cpu}
           value={d ? `${d.precisionModelo}%` : '—'}
           label="Precisión del Modelo"
-          sublabel="XGBoost activo S-1"
+          sublabel={`${d?.modeloActivoS1 ?? 'XGBoost'} activo S-1`}
         />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-1">
-          <SensorChartPanel data={trend.data} isLoading={trend.isLoading} />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="sm:col-span-2">
+          <SensorChartPanel
+            data={trend.data}
+            isLoading={trend.isLoading}
+            variable={sensorVariable}
+            onVariableChange={setSensorVariable}
+            machines={machineList}
+            maquinaId={sensorMaquinaId}
+            onMaquinaChange={setSensorMaquinaId}
+          />
         </div>
-        <FaultBreakdownPanel data={faults.data} isLoading={faults.isLoading} />
-        <MachineStatusPanel machines={machineList} isLoading={machines.isLoading} />
+        <FaultBreakdownPanel data={fallosHoy} isLoading={dashboard.isLoading} />
+        <MachineStatusPanel
+          machines={machineList}
+          activeAlerts={alertList}
+          isLoading={machines.isLoading || activeAlerts.isLoading}
+        />
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
           <CardTitle>Alertas Recientes</CardTitle>
           <Link href="/dashboard/orders" className="text-sm font-medium text-accent hover:underline">
             Ver historial completo →
@@ -137,16 +161,16 @@ function RecentAlertsTable({
         {
           key: 'tipo',
           header: 'Tipo Fallo',
-          render: (r) => r.tipoFallo ?? '—',
+          render: (r) => formatFaultTypeCell(r.tipoFallo),
         },
         {
-          key: 'nivel',
-          header: 'Nivel',
-          render: (r) => r.nivel,
+          key: 'algoritmo',
+          header: 'Algoritmo',
+          render: (r) => formatModelLabel(r.modeloPrediccion),
         },
         {
           key: 'conf',
-          header: 'Confianza S-1',
+          header: 'Confianza',
           render: (r) => {
             if (r.confianzaPrediccion != null) return `${r.confianzaPrediccion.toFixed(1)}%`;
             if (r.confianzaLider != null) return `${(Number(r.confianzaLider) * 100).toFixed(1)}%`;
@@ -166,9 +190,7 @@ function RecentAlertsTable({
         {
           key: 'estado',
           header: 'Estado',
-          render: (r) => (
-            <StatusPill status={alertEstadoToPill(r.estado)} />
-          ),
+          render: (r) => <StatusPill status={alertEstadoToPill(r.estado)} />,
         },
       ]}
     />

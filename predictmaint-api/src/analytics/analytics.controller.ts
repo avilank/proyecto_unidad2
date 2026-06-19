@@ -43,8 +43,9 @@ export class AnalyticsController {
   getSensorTrend(
     @Query('variable') variable = 'rotationalSpeed',
     @Query('hours') hours = '24',
+    @Query('maquinaId') maquinaId?: string,
   ) {
-    return this.analyticsService.getSensorTrend(variable, Number(hours));
+    return this.analyticsService.getSensorTrend(variable, Number(hours), maquinaId);
   }
 
   @Get('export')

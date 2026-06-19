@@ -12,6 +12,7 @@ import { Orden } from '../database/models/orden.model';
 import { PrediccionFallo } from '../database/models/prediccion-fallo.model';
 import { RespuestaRecomendacion } from '../database/models/respuesta-recomendacion.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
+import { findMaquinaByCodigo } from '../common/utils/maquina.util';
 import { OrdersService } from '../orders/orders.service';
 
 @Injectable()
@@ -22,6 +23,8 @@ export class AnalyticsService {
     @InjectModel(Alerta) private readonly alertaModel: typeof Alerta,
     @InjectModel(AnalisisFallo) private readonly analisisModel: typeof AnalisisFallo,
     @InjectModel(PrediccionFallo) private readonly prediccionModel: typeof PrediccionFallo,
+    @InjectModel(LecturaSensor) private readonly lecturaSensorModel: typeof LecturaSensor,
+    @InjectModel(ModeloMl) private readonly modeloMlModel: typeof ModeloMl,
     private readonly ordersService: OrdersService,
   ) {}
 
@@ -122,9 +125,23 @@ export class AnalyticsService {
       limit: 100,
       include: [{ model: ModeloMl }],
     });
-    const precision =
+    const precisionFromPreds =
       preds.length > 0
         ? preds.reduce((s, p) => s + Number(p.modeloMl?.accuracy ?? 0), 0) / preds.length
+        : 0;
+
+    const defaultS1 = await this.modeloMlModel.findOne({
+      where: { esPrediccion: true, esDefault: true },
+    });
+    const modeloActivoS1 = defaultS1?.nombre ?? 'XGBoost';
+    const precisionModelo =
+      defaultS1?.accuracy != null
+        ? Number(defaultS1.accuracy)
+        : Math.round(precisionFromPreds * 10) / 10;
+
+    const tasaFalloGlobal =
+      totalMaquinas > 0
+        ? Math.round((fallasDetectadasHoy / totalMaquinas) * 1000) / 10
         : 0;
 
     return {
@@ -144,7 +161,9 @@ export class AnalyticsService {
       fallosPorTipoHoy,
       tasaDeteccion:
         totalMaquinas > 0 ? Math.round((maquinasEvaluadasHoy / totalMaquinas) * 100) / 100 : 0,
-      precisionModelo: Math.round(precision * 10) / 10,
+      tasaFalloGlobal,
+      precisionModelo: Math.round(precisionModelo * 10) / 10,
+      modeloActivoS1,
     };
   }
 
@@ -256,8 +275,36 @@ export class AnalyticsService {
       }));
   }
 
-  async getSensorTrend(_variable: string, _hours: number) {
-    return [];
+  async getSensorTrend(variable: string, hours: number, maquinaId?: string) {
+    const fieldMap: Record<string, keyof LecturaSensor> = {
+      airTemperature: 'airTemperature',
+      processTemperature: 'processTemperature',
+      rotationalSpeed: 'rotationalSpeed',
+      rpm: 'rotationalSpeed',
+      torque: 'torque',
+      toolWear: 'toolWear',
+    };
+    const field = fieldMap[variable] ?? 'rotationalSpeed';
+    const from = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+    const where: Record<string, unknown> = { fechaLectura: { [Op.gte]: from } };
+    if (maquinaId) {
+      const maquina = await findMaquinaByCodigo(maquinaId);
+      if (maquina) where.idMaquina = maquina.idMaquina;
+    }
+
+    const rows = await this.lecturaSensorModel.findAll({
+      where,
+      order: [['fechaLectura', 'ASC']],
+      limit: 200,
+      include: [{ model: Maquina, attributes: ['codigo'] }],
+    });
+
+    return rows.map((row) => ({
+      timestamp: row.fechaLectura.toISOString(),
+      value: Number(row[field as keyof LecturaSensor] ?? 0),
+      maquinaId: row.maquina?.codigo ?? String(row.idMaquina),
+    }));
   }
 
   exportCsv(type: string, range: string) {

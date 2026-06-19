@@ -19,9 +19,9 @@ export function useFaultsByType(range = 'week') {
   );
 }
 
-export function useSensorTrend(variable = 'rotationalSpeed', hours = 24) {
-  return useSWR(['/analytics/sensor-trend', variable, hours], () =>
-    analyticsService.getSensorTrend(variable, hours),
+export function useSensorTrend(variable = 'rotationalSpeed', hours = 24, maquinaId?: string) {
+  return useSWR(['/analytics/sensor-trend', variable, hours, maquinaId ?? 'all'], () =>
+    analyticsService.getSensorTrend(variable, hours, maquinaId),
   );
 }
 

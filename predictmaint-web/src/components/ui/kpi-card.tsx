@@ -15,6 +15,25 @@ const kpiVariants = cva('border-t-4', {
   defaultVariants: { tone: 'accent' },
 });
 
+const toneStyles = {
+  accent: {
+    icon: 'bg-accent-soft text-accent',
+    value: 'text-accent',
+  },
+  danger: {
+    icon: 'bg-danger-soft text-danger',
+    value: 'text-danger',
+  },
+  success: {
+    icon: 'bg-success-soft text-success',
+    value: 'text-success',
+  },
+  warning: {
+    icon: 'bg-warning-soft text-warning',
+    value: 'text-warning',
+  },
+} as const;
+
 export interface KpiCardProps extends VariantProps<typeof kpiVariants> {
   icon: LucideIcon;
   value: string | number;
@@ -28,24 +47,31 @@ export function KpiCard({
   value,
   label,
   sublabel,
-  tone,
+  tone = 'accent',
   className,
 }: KpiCardProps) {
+  const colors = toneStyles[tone ?? 'accent'];
+
   return (
     <Card className={cn(kpiVariants({ tone }), 'h-full', className)}>
-      <CardContent className="flex h-full min-h-[5.5rem] items-center gap-4 py-4">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-surface-2 text-ink-soft">
-          <Icon className="h-5 w-5" />
+      <CardContent className="py-4">
+        <div className="flex items-center gap-3">
+          <div
+            className={cn(
+              'flex h-11 w-11 shrink-0 items-center justify-center rounded-md',
+              colors.icon,
+            )}
+          >
+            <Icon className="h-5 w-5" strokeWidth={2.25} />
+          </div>
+          <p className={cn('text-2xl font-bold leading-none', colors.value)}>{value}</p>
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-2xl font-bold leading-none text-ink">{value}</p>
-          <p className="mt-1.5 text-sm font-medium leading-tight text-ink">{label}</p>
-          {sublabel ? (
-            <p className="mt-1 text-xs text-ink-muted">{sublabel}</p>
-          ) : (
-            <span className="mt-1 block h-4" aria-hidden />
-          )}
-        </div>
+        <p className="mt-2.5 text-sm font-medium leading-tight text-ink">{label}</p>
+        {sublabel ? (
+          <p className="mt-1 text-xs text-ink-muted">{sublabel}</p>
+        ) : (
+          <span className="mt-1 block h-4" aria-hidden />
+        )}
       </CardContent>
     </Card>
   );

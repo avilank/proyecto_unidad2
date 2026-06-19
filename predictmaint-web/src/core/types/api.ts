@@ -29,7 +29,9 @@ export interface DashboardApiResponse {
   sinIncidencia?: number;
   fallosPorTipoHoy?: Record<string, number>;
   tasaDeteccion: number;
+  tasaFalloGlobal?: number;
   precisionModelo: number;
+  modeloActivoS1?: string;
 }
 
 export interface RecurrentMachineFault {

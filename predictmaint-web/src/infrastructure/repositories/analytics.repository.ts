@@ -22,9 +22,9 @@ export class AnalyticsRepository implements IAnalyticsRepository {
     });
   }
 
-  getSensorTrend(variable = 'rpm', hours = 24): Promise<SensorTrendPoint[]> {
+  getSensorTrend(variable = 'rpm', hours = 24, maquinaId?: string): Promise<SensorTrendPoint[]> {
     return apiClient.get<SensorTrendPoint[]>('/analytics/sensor-trend', {
-      params: { variable, hours },
+      params: { variable, hours, ...(maquinaId ? { maquinaId } : {}) },
     });
   }
 }

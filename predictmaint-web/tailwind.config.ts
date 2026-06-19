@@ -16,18 +16,29 @@ const config: Config = {
         ink: 'var(--color-ink)',
         'ink-soft': 'var(--color-ink-soft)',
         'ink-muted': 'var(--color-ink-muted)',
+        'ink-muted-soft': 'var(--color-ink-muted-soft)',
         accent: {
           DEFAULT: 'var(--color-accent)',
           2: 'var(--color-accent-2)',
           deep: 'var(--color-accent-deep)',
+          soft: 'var(--color-accent-soft)',
         },
         border: {
           DEFAULT: 'var(--color-border)',
           soft: 'var(--color-border-soft)',
         },
-        success: 'var(--color-success)',
-        warning: 'var(--color-warning)',
-        danger: 'var(--color-danger)',
+        success: {
+          DEFAULT: 'var(--color-success)',
+          soft: 'var(--color-success-soft)',
+        },
+        warning: {
+          DEFAULT: 'var(--color-warning)',
+          soft: 'var(--color-warning-soft)',
+        },
+        danger: {
+          DEFAULT: 'var(--color-danger)',
+          soft: 'var(--color-danger-soft)',
+        },
         info: 'var(--color-info)',
         risk: {
           low: 'var(--color-risk-low)',

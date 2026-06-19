@@ -84,6 +84,7 @@ export interface IAnalyticsRepository {
   getSensorTrend(
     variable?: string,
     hours?: number,
+    maquinaId?: string,
   ): Promise<{ timestamp: string; value: number; maquinaId: string }[]>;
 }
 

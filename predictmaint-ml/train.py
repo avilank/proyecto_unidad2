@@ -192,7 +192,7 @@ def _sync_metrics_to_api() -> None:
         print("Aviso: sync-ml-metrics.js no encontrado; omitiendo sync BD")
         return
     env = os.environ.copy()
-    metrics_path = default_artifacts_path() / "metrics.json"
+    metrics_path = _default_artifacts_path() / "metrics.json"
     env["ML_METRICS_PATH"] = str(metrics_path)
     print(f"\nSincronizando métricas → modelos_ml ({metrics_path.name})…")
     import subprocess
