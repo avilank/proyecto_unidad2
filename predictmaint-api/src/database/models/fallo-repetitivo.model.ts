@@ -24,8 +24,8 @@ export class FalloRepetitivo extends Model {
   id!: number;
 
   @ForeignKey(() => Maquina)
-  @Column({ type: DataType.STRING(10), allowNull: false, field: 'maquina_id' })
-  maquinaId!: string;
+  @Column({ type: DataType.INTEGER, allowNull: false })
+  declare idMaquina: number;
 
   @ForeignKey(() => TipoFallo)
   @Column({ type: DataType.CHAR(3), field: 'tipo_fallo' })

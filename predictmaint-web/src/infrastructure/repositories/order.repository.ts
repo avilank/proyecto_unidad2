@@ -77,7 +77,14 @@ export class OrderRepository implements IOrderRepository {
 
   registerSolution(
     orderId: string,
-    payload: { descripcion: string; solucionTipo: string },
+    payload: {
+      descripcion: string;
+      solucionTipo: string;
+      comentario?: string;
+      esFalla?: boolean;
+      esPrediccionCorrecta?: boolean;
+      esClasificacionCorrecta?: boolean;
+    },
   ): Promise<OrderDetail> {
     return apiClient.post<OrderDetail>(`/orders/${orderId}/solution`, payload);
   }

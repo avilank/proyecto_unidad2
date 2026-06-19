@@ -21,10 +21,12 @@ import { ModeloMl } from '../database/models/modelo-ml.model';
 import { Orden } from '../database/models/orden.model';
 import { PrediccionFallo } from '../database/models/prediccion-fallo.model';
 import { SolucionAplicada } from '../database/models/solucion-aplicada.model';
+import { ObservacionTecnica } from '../database/models/observacion-tecnica.model';
 import { Tecnico } from '../database/models/tecnico.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
 import { Usuario } from '../database/models/usuario.model';
 import { MachinesService } from '../machines/machines.service';
+import { TechniciansService } from '../technicians/technicians.service';
 import {
   CreateOrderDto,
   EscalateOrderDto,
@@ -53,6 +55,7 @@ const ORDER_INCLUDES_BASE = [
     ],
   },
   { model: SolucionAplicada },
+  { model: ObservacionTecnica },
 ];
 
 function buildOrderIncludes(tipoFallo?: string) {
@@ -77,6 +80,7 @@ function buildOrderIncludes(tipoFallo?: string) {
       ],
     },
     { model: SolucionAplicada },
+    { model: ObservacionTecnica },
   ];
 }
 
@@ -89,6 +93,7 @@ export class OrdersService {
     @InjectModel(LecturaSensor) private readonly lecturaModel: typeof LecturaSensor,
     @InjectModel(AnalisisFallo) private readonly analisisModel: typeof AnalisisFallo,
     private readonly machinesService: MachinesService,
+    private readonly techniciansService: TechniciansService,
   ) {}
 
   toResponse(o: Orden) {
@@ -96,6 +101,9 @@ export class OrdersService {
     const liderS2 = analisis?.clasificaciones?.find((c) => c.esLider);
     const liderS1 = analisis?.predicciones?.find((p) => p.esLider);
     const ultimaSolucion = o.soluciones?.[o.soluciones.length - 1];
+    const ultimaObservacion = [...(o.observacionesTecnica ?? [])].sort(
+      (a, b) => new Date(b.fechaRegistro).getTime() - new Date(a.fechaRegistro).getTime(),
+    )[0];
     const confianzaLider =
       liderS1?.probabilidad != null
         ? Number(liderS1.probabilidad) / 100
@@ -127,6 +135,16 @@ export class OrdersService {
       estado: o.estado,
       solucionDescripcion: ultimaSolucion?.descripcion ?? null,
       solucionTipo: ultimaSolucion?.tipoSolucion ?? null,
+      observacionesOrden: o.observaciones ?? null,
+      observacionTecnica: ultimaObservacion
+        ? {
+            comentario: ultimaObservacion.comentario ?? null,
+            esFalla: ultimaObservacion.esFalla ?? null,
+            esPrediccionCorrecta: ultimaObservacion.esPrediccionCorrecta ?? null,
+            esClasificacionCorrecta: ultimaObservacion.esClasificacionCorrecta ?? null,
+            fechaRegistro: ultimaObservacion.fechaRegistro,
+          }
+        : null,
       detectadoEn: o.fechaCreacion,
       finalizadoEn: o.fechaFin ?? null,
       proximoReintentoAsignacion: o.proximoReintentoAsignacion?.toISOString() ?? null,
@@ -323,6 +341,9 @@ export class OrdersService {
       actor: 'usuario',
       fechaEvento: new Date(),
     });
+    if (dto.estado === EstadoOrden.FINALIZADO && o.idTecnico) {
+      await this.techniciansService.releaseIfIdle(o.idTecnico);
+    }
     return this.findOne(codigo);
   }
 
@@ -331,15 +352,33 @@ export class OrdersService {
     if (o.estado === EstadoOrden.FINALIZADO) {
       throw new ConflictException('La orden ya está finalizada');
     }
+
+    const liderS2 = o.analisis?.clasificaciones?.find((c) => c.esLider);
+    const idTipoFallo = liderS2?.idTipoFallo ?? liderS2?.tipoFallo?.idTipoFallo;
+
     await SolucionAplicada.create({
       idOrden: o.idOrden,
       tipoSolucion: dto.solucionTipo,
       descripcion: dto.descripcion,
       fechaRegistro: new Date(),
     });
+
+    await ObservacionTecnica.create({
+      idOrden: o.idOrden,
+      idTipoFallo,
+      esFalla: dto.esFalla ?? Boolean(liderS2?.tipoFallo),
+      esPrediccionCorrecta: dto.esPrediccionCorrecta ?? true,
+      esClasificacionCorrecta: dto.esClasificacionCorrecta ?? true,
+      comentario: dto.comentario?.trim() || dto.descripcion,
+      fechaRegistro: new Date(),
+    });
+
     await o.update({
       estado: EstadoOrden.FINALIZADO,
       fechaFin: new Date(),
+      ...(dto.comentario?.trim()
+        ? { observaciones: dto.comentario.trim() }
+        : { observaciones: dto.descripcion }),
     });
     await this.eventoModel.create({
       idOrden: o.idOrden,
@@ -348,6 +387,9 @@ export class OrdersService {
       actor: 'tecnico',
       fechaEvento: new Date(),
     });
+    if (o.idTecnico) {
+      await this.techniciansService.releaseIfIdle(o.idTecnico);
+    }
     return this.findOne(codigo);
   }
 

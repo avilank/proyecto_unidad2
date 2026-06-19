@@ -3,19 +3,22 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sidebar } from './sidebar';
+import { useSessionHydrated } from '@/presentation/hooks/useAuth';
 import { useSessionStore } from '@/presentation/stores/sessionStore';
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const hydrated = useSessionHydrated();
   const token = useSessionStore((s) => s.token);
 
   useEffect(() => {
+    if (!hydrated) return;
     if (!token) {
       router.replace('/login');
     }
-  }, [token, router]);
+  }, [hydrated, token, router]);
 
-  if (!token) {
+  if (!hydrated || !token) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-bg">
         <p className="text-ink-soft">Cargando sesión…</p>

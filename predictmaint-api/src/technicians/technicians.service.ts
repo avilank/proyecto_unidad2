@@ -10,6 +10,7 @@ import {
 import { getCurrentTurno } from '../common/utils/shift.util';
 import {
   Especialidad,
+  EstadoOrden,
   EstadoTecnico,
   NivelRiesgo,
 } from '../common/enums';
@@ -304,5 +305,23 @@ export class TechniciansService {
       await tecnico.update({ disponibilidad: EstadoTecnico.EN_INTERVENCION });
     }
     return tecnico;
+  }
+
+  async releaseIfIdle(tecnicoId: number): Promise<void> {
+    const tecnico = await this.tecnicoModel.findByPk(tecnicoId);
+    if (!tecnico || tecnico.disponibilidad !== EstadoTecnico.EN_INTERVENCION) {
+      return;
+    }
+
+    const activeOrders = await this.ordenModel.count({
+      where: {
+        idTecnico: tecnicoId,
+        estado: { [Op.in]: [EstadoOrden.PENDIENTE, EstadoOrden.EN_PROGRESO] },
+      },
+    });
+
+    if (activeOrders === 0) {
+      await tecnico.update({ disponibilidad: EstadoTecnico.DISPONIBLE });
+    }
   }
 }

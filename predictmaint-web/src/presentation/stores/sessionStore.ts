@@ -18,7 +18,10 @@ export const useSessionStore = create<SessionState>()(
       setSession: (token, user) => set({ token, user }),
       clearSession: () => set({ token: null, user: null }),
     }),
-    { name: 'predictmaint-session' },
+    {
+      name: 'predictmaint-session',
+      partialize: (state) => ({ token: state.token, user: state.user }),
+    },
   ),
 );
 

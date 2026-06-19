@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
 import { EstadoOrden, SolucionTipo } from '../../common/enums';
 
 export class CreateOrderDto {
@@ -27,6 +27,26 @@ export class RegisterSolutionDto {
   @ApiProperty({ enum: SolucionTipo })
   @IsEnum(SolucionTipo)
   solucionTipo!: SolucionTipo;
+
+  @ApiPropertyOptional({ description: 'Comentario del técnico (observacion_tecnica)' })
+  @IsOptional()
+  @IsString()
+  comentario?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  esFalla?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  esPrediccionCorrecta?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  esClasificacionCorrecta?: boolean;
 }
 
 export class EscalateOrderDto {

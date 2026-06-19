@@ -8,10 +8,12 @@ import { Maquina } from '../database/models/maquina.model';
 import { ModeloMl } from '../database/models/modelo-ml.model';
 import { Orden } from '../database/models/orden.model';
 import { SolucionAplicada } from '../database/models/solucion-aplicada.model';
+import { ObservacionTecnica } from '../database/models/observacion-tecnica.model';
 import { Tecnico } from '../database/models/tecnico.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
 import { Usuario } from '../database/models/usuario.model';
 import { MachinesModule } from '../machines/machines.module';
+import { TechniciansModule } from '../technicians/technicians.module';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 
@@ -29,8 +31,10 @@ import { OrdersService } from './orders.service';
       TipoFallo,
       ModeloMl,
       SolucionAplicada,
+      ObservacionTecnica,
     ]),
     MachinesModule,
+    TechniciansModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

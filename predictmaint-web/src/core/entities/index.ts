@@ -122,6 +122,14 @@ export interface Order {
   estado: EstadoOrden;
   solucionDescripcion: string | null;
   solucionTipo: SolucionTipo | null;
+  observacionesOrden?: string | null;
+  observacionTecnica?: {
+    comentario: string | null;
+    esFalla: boolean | null;
+    esPrediccionCorrecta: boolean | null;
+    esClasificacionCorrecta: boolean | null;
+    fechaRegistro: string;
+  } | null;
   detectadoEn: string;
   finalizadoEn: string | null;
   proximoReintentoAsignacion?: string | null;

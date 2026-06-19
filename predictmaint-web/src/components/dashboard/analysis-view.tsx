@@ -14,8 +14,7 @@ import { useOrders } from '@/presentation/hooks/useOrders';
 import { useBinaryPredictions, useMulticlassPredictions } from '@/presentation/hooks/usePredictions';
 import { useRagPlan } from '@/presentation/hooks/useRag';
 import { ragService } from '@/application/services/rag.service';
-import { orderService } from '@/application/services/order.service';
-import { EstadoOrden, SolucionTipo } from '@/core/types';
+import { EstadoOrden } from '@/core/types';
 import { cn } from '@/lib/utils/cn';
 
 const UMBRAL_FALLA = 0.5;
@@ -521,8 +520,6 @@ function RagTab({
   onRegenerated?: () => void;
 }) {
   const [rejectComment, setRejectComment] = useState('');
-  const [solutionText, setSolutionText] = useState('');
-  const [solutionTipo, setSolutionTipo] = useState<SolucionTipo>(SolucionTipo.CON_RAG);
   const [confirmAcceptOpen, setConfirmAcceptOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -531,8 +528,6 @@ function RagTab({
   const orderEstado = order?.estado ?? EstadoOrden.PENDIENTE;
   const ragEstado = data?.estado ?? 'pendiente';
   const canRespond = orderEstado === EstadoOrden.PENDIENTE && ragEstado === 'pendiente';
-  const canRegisterSolution =
-    orderEstado === EstadoOrden.EN_PROGRESO || ragEstado === 'aceptado';
   const isFinalized = orderEstado === EstadoOrden.FINALIZADO;
 
   const runAction = async (fn: () => Promise<unknown>) => {
@@ -560,16 +555,6 @@ function RagTab({
       if (!orderId) return;
       await ragService.reject(orderId, rejectComment.trim() || undefined);
       setRejectComment('');
-    });
-
-  const handleRegisterSolution = () =>
-    runAction(async () => {
-      if (!orderId || !solutionText.trim()) return;
-      await orderService.registerSolution(orderId, {
-        descripcion: solutionText.trim(),
-        solucionTipo: solutionTipo,
-      });
-      setSolutionText('');
     });
 
   if (isLoading) return <Skeleton className="h-[380px] w-full" />;

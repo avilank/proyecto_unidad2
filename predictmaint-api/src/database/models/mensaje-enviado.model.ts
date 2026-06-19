@@ -25,8 +25,8 @@ export class MensajeEnviado extends Model {
   tecnicoId?: number;
 
   @ForeignKey(() => Orden)
-  @Column({ type: DataType.STRING(10), field: 'orden_id' })
-  ordenId?: string;
+  @Column({ type: DataType.BIGINT, field: 'id_orden' })
+  declare idOrden?: number;
 
   @Column(DataType.STRING(120))
   maquinas?: string;

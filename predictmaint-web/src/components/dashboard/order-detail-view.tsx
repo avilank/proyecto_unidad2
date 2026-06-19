@@ -8,11 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Input } from '@/components/ui/input';
 import { useOrder, useOrderTimeline } from '@/presentation/hooks/useOrders';
 import { useRagPlan } from '@/presentation/hooks/useRag';
 import { orderService } from '@/application/services/order.service';
 import { EstadoOrden, SolucionTipo } from '@/core/types';
+import { cn } from '@/lib/utils/cn';
 
 export function OrderDetailView({ orderId }: { orderId: string }) {
   const router = useRouter();
@@ -20,9 +20,17 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
   const timeline = useOrderTimeline(orderId);
   const rag = useRagPlan(orderId);
   const [solutionText, setSolutionText] = useState('');
+  const [observaciones, setObservaciones] = useState('');
+  const [solutionTipo, setSolutionTipo] = useState<SolucionTipo>(SolucionTipo.CON_RAG);
+  const [esFalla, setEsFalla] = useState(true);
+  const [esPrediccionCorrecta, setEsPrediccionCorrecta] = useState(true);
+  const [esClasificacionCorrecta, setEsClasificacionCorrecta] = useState(true);
   const [busy, setBusy] = useState(false);
 
   const data = order.data;
+  const isFinalized = data?.estado === EstadoOrden.FINALIZADO;
+  const canRegister =
+    data?.estado === EstadoOrden.EN_PROGRESO || data?.estado === EstadoOrden.PENDIENTE;
 
   const refresh = () => {
     order.mutate();
@@ -41,6 +49,21 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
     }
   };
 
+  const handleRegisterSolution = () =>
+    runAction(async () => {
+      if (!solutionText.trim()) return;
+      await orderService.registerSolution(orderId, {
+        descripcion: solutionText.trim(),
+        solucionTipo: solutionTipo,
+        comentario: observaciones.trim() || undefined,
+        esFalla,
+        esPrediccionCorrecta,
+        esClasificacionCorrecta,
+      });
+      setSolutionText('');
+      setObservaciones('');
+    });
+
   return (
     <div className="flex min-h-full flex-col">
       <Topbar
@@ -55,181 +78,302 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
       />
 
       <div className="flex flex-col gap-4 px-6 pb-6 pt-5">
-      {order.isLoading ? (
-        <Skeleton className="h-[520px] w-full" />
-      ) : (
-        <div className="grid gap-4 xl:grid-cols-5">
-          <Card className="xl:col-span-1">
-            <CardHeader>
-              <CardTitle>Timeline de la Orden</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {(timeline.data ?? []).map((e) => (
-                <div key={e.id} className="border-l-2 border-accent/40 pl-3">
-                  <p className="text-sm font-semibold text-ink">{e.etapa.replace(/_/g, ' ')}</p>
-                  <p className="text-xs text-ink-muted">
-                    {new Date(e.ocurridoEn).toLocaleString('es-PE')}
-                  </p>
-                  {e.descripcion && <p className="mt-1 text-xs text-ink-soft">{e.descripcion}</p>}
-                </div>
-              ))}
-              {!timeline.data?.length && (
-                <p className="text-sm text-ink-muted">Sin eventos registrados</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="xl:col-span-3">
-            <CardHeader>
-              <CardTitle>Detalle del Fallo — {data?.tipoFallo ?? '—'}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-wrap gap-2">
-                {data?.tipoFallo && <Badge variant="warning">{data.tipoFallo}</Badge>}
-                {data?.modeloPrediccion && (
-                  <Badge>S-1: {prettyModelSlug(data.modeloPrediccion)}</Badge>
-                )}
-                {(data?.modeloClasificacion ?? data?.algoritmoClasificador) && (
-                  <Badge>
-                    S-2: {prettyModelSlug(data.modeloClasificacion ?? data.algoritmoClasificador!)}
-                  </Badge>
-                )}
-                {data?.confianzaPrediccion != null && (
-                  <Badge variant="accent">S-1 {data.confianzaPrediccion.toFixed(1)}%</Badge>
-                )}
-                {data?.confianza != null && (
-                  <Badge variant="accent">S-2 {data.confianza.toFixed(1)}%</Badge>
-                )}
-                {data?.nivelRiesgo && <Badge variant="high">{data.nivelRiesgo}</Badge>}
-              </div>
-
-              <div className="grid gap-2 rounded-md border border-border-soft bg-surface-2 p-3 text-sm md:grid-cols-2">
-                <Info label="Máquina" value={data?.maquinaId ?? '—'} />
-                <Info label="Estado" value={data?.estado?.replace('_', ' ') ?? '—'} />
-                <Info label="Técnico" value={data?.tecnico?.nombre ?? 'Sin asignar'} />
-                <Info
-                  label="Confianza S-2"
-                  value={data?.confianza != null ? `${data.confianza.toFixed(1)}%` : '—'}
-                />
-                <Info
-                  label="Confianza S-1 (líder)"
-                  value={
-                    data?.confianzaPrediccion != null
-                      ? `${data.confianzaPrediccion.toFixed(1)}%`
-                      : data?.confianzaLider != null
-                        ? `${(data.confianzaLider * 100).toFixed(1)}%`
-                        : '—'
-                  }
-                />
-                <Info
-                  label="Solución"
-                  value={data?.solucionDescripcion ?? '—'}
-                />
-              </div>
-
-              {data?.lectura && (
-                <div className="grid gap-2 rounded-md border border-border-soft bg-surface-2 p-3 text-sm md:grid-cols-3">
-                  <Info label="Temp. aire" value={`${data.lectura.airTemperature} K`} />
-                  <Info label="Temp. proceso" value={`${data.lectura.processTemperature} K`} />
-                  <Info label="RPM" value={String(data.lectura.rotationalSpeed)} />
-                  <Info label="Torque" value={`${data.lectura.torque} Nm`} />
-                  <Info label="Desgaste" value={`${data.lectura.toolWear} min`} />
-                </div>
-              )}
-
-              <div>
-                <p className="mb-2 text-sm font-semibold text-ink">Recomendaciones del RAG</p>
-                <div className="space-y-2">
-                  {(rag.data?.acciones ?? []).map((a) => (
-                    <div
-                      key={a.id ?? a.orden}
-                      className="rounded-md border border-border-soft bg-surface-2 p-3 text-sm"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-ink">
-                          {a.orden}. {a.titulo}
-                        </p>
-                        <Badge variant={ragPriorityVariant(a.prioridad)}>
-                          {formatRagPriority(a.prioridad)}
-                        </Badge>
-                      </div>
-                      <RagDetailText text={a.detalle} />
-                    </div>
-                  ))}
-                  {!rag.data?.acciones?.length && (
-                    <p className="text-sm text-ink-muted">Sin recomendaciones (S-1 sin falla o sin S-3)</p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="space-y-4 xl:col-span-1">
-            <Card>
-              <CardHeader>
-                <CardTitle>Acciones</CardTitle>
+        {order.isLoading ? (
+          <Skeleton className="h-[520px] w-full" />
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-11">
+            <Card className="xl:col-span-2">
+              <CardHeader className="px-3 py-3">
+                <CardTitle>Timeline de la Orden</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
-                {data?.estado === EstadoOrden.PENDIENTE && (
-                  <Button
-                    fullWidth
-                    variant="secondary"
-                    disabled={busy}
-                    onClick={() =>
-                      runAction(() =>
-                        orderService.updateStatus(orderId, EstadoOrden.EN_PROGRESO),
-                      )
-                    }
-                  >
-                    Marcar En Progreso
-                  </Button>
-                )}
-                <Input
-                  label="Descripción solución"
-                  placeholder="Acciones realizadas…"
-                  value={solutionText}
-                  onChange={(e) => setSolutionText(e.target.value)}
-                />
-                <Button
-                  fullWidth
-                  disabled={busy || !solutionText.trim() || data?.estado === EstadoOrden.FINALIZADO}
-                  onClick={() =>
-                    runAction(() =>
-                      orderService.registerSolution(orderId, {
-                        descripcion: solutionText.trim(),
-                        solucionTipo: SolucionTipo.CON_RAG,
-                      }),
-                    )
-                  }
-                >
-                  Registrar Solución y Cerrar
-                </Button>
-                <Button
-                  fullWidth
-                  variant="warning"
-                  disabled={busy}
-                  onClick={() =>
-                    runAction(() =>
-                      orderService.escalate(orderId, 'Escalado manual desde historial'),
-                    )
-                  }
-                >
-                  Escalar a Supervisor
-                </Button>
-                {data?.maquinaId && (
-                  <Button
-                    fullWidth
-                    variant="secondary"
-                    onClick={() => router.push(`/dashboard/analysis/${data.maquinaId}?order=${orderId}`)}
-                  >
-                    Ver análisis ML
-                  </Button>
+              <CardContent className="space-y-3 px-3 py-3">
+                {(timeline.data ?? []).map((e) => (
+                  <div key={e.id} className="border-l-2 border-accent/40 pl-2">
+                    <p className="text-sm font-semibold text-ink">{e.etapa.replace(/_/g, ' ')}</p>
+                    <p className="text-xs text-ink-muted">
+                      {new Date(e.ocurridoEn).toLocaleString('es-PE')}
+                    </p>
+                    {e.descripcion && <p className="mt-1 text-xs text-ink-soft">{e.descripcion}</p>}
+                  </div>
+                ))}
+                {!timeline.data?.length && (
+                  <p className="text-sm text-ink-muted">Sin eventos registrados</p>
                 )}
               </CardContent>
             </Card>
+
+            <Card className="xl:col-span-6">
+              <CardHeader>
+                <CardTitle>Detalle del Fallo — {data?.tipoFallo ?? '—'}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  {data?.tipoFallo && <Badge variant="warning">{data.tipoFallo}</Badge>}
+                  {data?.modeloPrediccion && (
+                    <Badge>S-1: {prettyModelSlug(data.modeloPrediccion)}</Badge>
+                  )}
+                  {(data?.modeloClasificacion ?? data?.algoritmoClasificador) && (
+                    <Badge>
+                      S-2: {prettyModelSlug(data.modeloClasificacion ?? data.algoritmoClasificador!)}
+                    </Badge>
+                  )}
+                  {data?.confianzaPrediccion != null && (
+                    <Badge variant="accent">S-1 {data.confianzaPrediccion.toFixed(1)}%</Badge>
+                  )}
+                  {data?.confianza != null && (
+                    <Badge variant="accent">S-2 {data.confianza.toFixed(1)}%</Badge>
+                  )}
+                  {data?.nivelRiesgo && <Badge variant="high">{data.nivelRiesgo}</Badge>}
+                </div>
+
+                <div className="grid gap-2 rounded-md border border-border-soft bg-surface-2 p-3 text-sm md:grid-cols-2">
+                  <Info label="Máquina" value={data?.maquinaId ?? '—'} />
+                  <Info label="Estado" value={data?.estado?.replace('_', ' ') ?? '—'} />
+                  <Info label="Técnico" value={data?.tecnico?.nombre ?? 'Sin asignar'} />
+                  <Info
+                    label="Confianza S-2"
+                    value={data?.confianza != null ? `${data.confianza.toFixed(1)}%` : '—'}
+                  />
+                  <Info
+                    label="Confianza S-1 (líder)"
+                    value={
+                      data?.confianzaPrediccion != null
+                        ? `${data.confianzaPrediccion.toFixed(1)}%`
+                        : data?.confianzaLider != null
+                          ? `${(data.confianzaLider * 100).toFixed(1)}%`
+                          : '—'
+                    }
+                  />
+                  <Info
+                    label="Tipo de solución"
+                    value={formatSolucionTipo(data?.solucionTipo)}
+                  />
+                  <Info
+                    label="Solución aplicada"
+                    value={data?.solucionDescripcion ?? '—'}
+                  />
+                  <Info
+                    label="Observaciones técnicas"
+                    value={
+                      data?.observacionTecnica?.comentario ??
+                      data?.observacionesOrden ??
+                      '—'
+                    }
+                  />
+                </div>
+
+                {data?.lectura && (
+                  <div className="grid gap-2 rounded-md border border-border-soft bg-surface-2 p-3 text-sm md:grid-cols-3">
+                    <Info label="Temp. aire" value={`${data.lectura.airTemperature} K`} />
+                    <Info label="Temp. proceso" value={`${data.lectura.processTemperature} K`} />
+                    <Info label="RPM" value={String(data.lectura.rotationalSpeed)} />
+                    <Info label="Torque" value={`${data.lectura.torque} Nm`} />
+                    <Info label="Desgaste" value={`${data.lectura.toolWear} min`} />
+                  </div>
+                )}
+
+                {isFinalized && data?.observacionTecnica && (
+                  <div className="rounded-md border border-border-soft bg-surface-2 p-3 text-sm">
+                    <p className="mb-2 font-semibold text-ink">Validación del técnico</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant={data.observacionTecnica.esFalla ? 'danger' : 'success'}>
+                        {data.observacionTecnica.esFalla ? 'Falla confirmada' : 'Sin falla real'}
+                      </Badge>
+                      <Badge variant={data.observacionTecnica.esPrediccionCorrecta ? 'success' : 'warning'}>
+                        S-1 {data.observacionTecnica.esPrediccionCorrecta ? 'correcta' : 'incorrecta'}
+                      </Badge>
+                      <Badge variant={data.observacionTecnica.esClasificacionCorrecta ? 'success' : 'warning'}>
+                        S-2 {data.observacionTecnica.esClasificacionCorrecta ? 'correcta' : 'incorrecta'}
+                      </Badge>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <p className="mb-2 text-sm font-semibold text-ink">Recomendaciones del RAG</p>
+                  <div className="space-y-2">
+                    {(rag.data?.acciones ?? []).map((a) => (
+                      <div
+                        key={a.id ?? a.orden}
+                        className="rounded-md border border-border-soft bg-surface-2 p-3 text-sm"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-ink">
+                            {a.orden}. {a.titulo}
+                          </p>
+                          <Badge variant={ragPriorityVariant(a.prioridad)}>
+                            {formatRagPriority(a.prioridad)}
+                          </Badge>
+                        </div>
+                        <RagDetailText text={a.detalle} />
+                      </div>
+                    ))}
+                    {!rag.data?.acciones?.length && (
+                      <p className="text-sm text-ink-muted">Sin recomendaciones (S-1 sin falla o sin S-3)</p>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="space-y-3 xl:col-span-3">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Registrar Solución Aplicada</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {isFinalized ? (
+                    <div className="space-y-3 rounded-md border border-border-soft bg-surface-2 p-3 text-sm">
+                      <div>
+                        <p className="text-xs text-ink-muted">Tipo de solución</p>
+                        <p className="font-medium text-ink">{formatSolucionTipo(data?.solucionTipo)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-ink-muted">Descripción</p>
+                        <p className="text-ink-soft">{data?.solucionDescripcion ?? '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-ink-muted">Observaciones</p>
+                        <p className="text-ink-soft">
+                          {data?.observacionTecnica?.comentario ?? data?.observacionesOrden ?? '—'}
+                        </p>
+                      </div>
+                    </div>
+                  ) : canRegister ? (
+                    <>
+                      <div className="space-y-2">
+                        <p className="text-xs text-ink-muted">Solución usada:</p>
+                        <div className="grid grid-cols-1 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSolutionTipo(SolucionTipo.CON_RAG)}
+                            className={cn(
+                              'rounded-md border px-3 py-2 text-left text-xs font-semibold transition-colors',
+                              solutionTipo === SolucionTipo.CON_RAG
+                                ? 'border-accent bg-accent/10 text-accent'
+                                : 'border-border bg-surface-2 text-ink-muted hover:text-ink',
+                            )}
+                          >
+                            Con recomendaciones RAG
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSolutionTipo(SolucionTipo.PROPIA)}
+                            className={cn(
+                              'rounded-md border px-3 py-2 text-left text-xs font-semibold transition-colors',
+                              solutionTipo === SolucionTipo.PROPIA
+                                ? 'border-accent bg-accent/10 text-accent'
+                                : 'border-border bg-surface-2 text-ink-muted hover:text-ink',
+                            )}
+                          >
+                            Solución propia
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs text-ink-muted" htmlFor="solution-desc">
+                          Descripción de la solución
+                        </label>
+                        <textarea
+                          id="solution-desc"
+                          rows={4}
+                          value={solutionText}
+                          onChange={(e) => setSolutionText(e.target.value)}
+                          placeholder="Ej: Se reemplazó la herramienta y se verificó alineación del husillo…"
+                          className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs text-ink-muted" htmlFor="observaciones">
+                          Observaciones técnicas
+                        </label>
+                        <textarea
+                          id="observaciones"
+                          rows={3}
+                          value={observaciones}
+                          onChange={(e) => setObservaciones(e.target.value)}
+                          placeholder="Comentarios sobre la intervención, validación del fallo o del modelo…"
+                          className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                        />
+                      </div>
+
+                      <div className="space-y-2 rounded-md border border-border-soft bg-surface-2 p-3">
+                        <p className="text-xs font-semibold text-ink">Validación ML</p>
+                        <label className="flex items-center gap-2 text-xs text-ink-soft">
+                          <input
+                            type="checkbox"
+                            className="accent-accent"
+                            checked={esFalla}
+                            onChange={(e) => setEsFalla(e.target.checked)}
+                          />
+                          Se confirmó falla real en planta
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-ink-soft">
+                          <input
+                            type="checkbox"
+                            className="accent-accent"
+                            checked={esPrediccionCorrecta}
+                            onChange={(e) => setEsPrediccionCorrecta(e.target.checked)}
+                          />
+                          Predicción S-1 fue correcta
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-ink-soft">
+                          <input
+                            type="checkbox"
+                            className="accent-accent"
+                            checked={esClasificacionCorrecta}
+                            onChange={(e) => setEsClasificacionCorrecta(e.target.checked)}
+                          />
+                          Clasificación S-2 fue correcta
+                        </label>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={busy || !solutionText.trim()}
+                        onClick={handleRegisterSolution}
+                        className="flex w-full flex-col items-center rounded-lg bg-success px-4 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-success/90 disabled:opacity-50"
+                      >
+                        <span>Finalizar Orden</span>
+                      </button>
+
+                      <Button
+                        fullWidth
+                        variant="warning"
+                        disabled={busy}
+                        onClick={() =>
+                          runAction(() =>
+                            orderService.escalate(orderId, 'Escalado manual desde historial'),
+                          )
+                        }
+                      >
+                        Escalar a Supervisor
+                      </Button>
+                    </>
+                  ) : (
+                    <p className="text-sm text-ink-muted">
+                      La orden no admite más cambios en este estado.
+                    </p>
+                  )}
+
+                  {data?.maquinaId && (
+                    <Button
+                      fullWidth
+                      variant="secondary"
+                      onClick={() =>
+                        router.push(`/dashboard/analysis/${data.maquinaId}?order=${orderId}`)
+                      }
+                    >
+                      Ver análisis ML
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </div>
-        </div>
-      )}
+        )}
       </div>
     </div>
   );
@@ -242,6 +386,22 @@ function Info({ label, value }: { label: string; value: string }) {
       <p className="font-medium text-ink">{value}</p>
     </div>
   );
+}
+
+function formatSolucionTipo(tipo?: SolucionTipo | string | null) {
+  switch (tipo) {
+    case SolucionTipo.PROPIA:
+    case 'propia':
+      return 'Solución propia';
+    case SolucionTipo.RECHAZADA_MANUAL:
+    case 'rechazada_manual':
+      return 'Rechazada / manual';
+    case SolucionTipo.CON_RAG:
+    case 'con_rag':
+      return 'Con recomendaciones RAG';
+    default:
+      return '—';
+  }
 }
 
 function formatRagPriority(prioridad: string): string {

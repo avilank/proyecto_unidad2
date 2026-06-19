@@ -38,7 +38,14 @@ export class OrderService {
 
   registerSolution(
     orderId: string,
-    payload: { descripcion: string; solucionTipo: string },
+    payload: {
+      descripcion: string;
+      solucionTipo: string;
+      comentario?: string;
+      esFalla?: boolean;
+      esPrediccionCorrecta?: boolean;
+      esClasificacionCorrecta?: boolean;
+    },
   ): Promise<OrderDetail> {
     return orderRepository.registerSolution(orderId, payload);
   }

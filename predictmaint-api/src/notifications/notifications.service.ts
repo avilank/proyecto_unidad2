@@ -70,6 +70,7 @@ export class NotificationsService {
 
     const { rows, count } = await this.mensajeModel.findAndCountAll({
       where,
+      include: [{ model: Orden, attributes: ['codigo'] }],
       offset: (page - 1) * limit,
       limit,
       order: [['enviadoEn', 'DESC']],
@@ -79,7 +80,7 @@ export class NotificationsService {
       rows.map((m) => ({
         id: Number(m.id),
         tecnicoId: m.tecnicoId ?? null,
-        ordenId: m.ordenId ?? null,
+        ordenId: m.orden?.codigo ?? null,
         maquinas: m.maquinas ?? null,
         motivo: m.motivo ?? null,
         canal: m.canal,
@@ -230,7 +231,7 @@ export class NotificationsService {
       const canal = this.resolveCanal(needsPhone, needsEmail);
       await this.mensajeModel.create({
         tecnicoId: tecnico.idTecnico,
-        ordenId: orden.codigo,
+        idOrden: orden.idOrden,
         maquinas: maquinaCodigo,
         motivo: `${tipoFalloCodigo} — ${nivel}`,
         canal,
@@ -241,7 +242,7 @@ export class NotificationsService {
     } catch (err) {
       await this.mensajeModel.create({
         tecnicoId: tecnico.idTecnico,
-        ordenId: orden.codigo,
+        idOrden: orden.idOrden,
         maquinas: maquinaCodigo,
         motivo: `${tipoFalloCodigo} — ${nivel}`,
         canal: this.resolveCanal(needsPhone, needsEmail),
