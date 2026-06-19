@@ -21,6 +21,9 @@ import { ObservacionTecnica } from './observacion-tecnica.model';
 import { SolucionAplicada } from './solucion-aplicada.model';
 import { RespuestaRecomendacion } from './respuesta-recomendacion.model';
 import { AuditLog } from './audit-log.model';
+import { MensajeEnviado } from './mensaje-enviado.model';
+import { ReglaNotificacion } from './regla-notificacion.model';
+import { FalloRepetitivo } from './fallo-repetitivo.model';
 
 export const models = [
   Rol,
@@ -46,6 +49,9 @@ export const models = [
   SolucionAplicada,
   RespuestaRecomendacion,
   AuditLog,
+  MensajeEnviado,
+  ReglaNotificacion,
+  FalloRepetitivo,
 ];
 
 export {
@@ -72,4 +78,7 @@ export {
   SolucionAplicada,
   RespuestaRecomendacion,
   AuditLog,
+  MensajeEnviado,
+  ReglaNotificacion,
+  FalloRepetitivo,
 };
