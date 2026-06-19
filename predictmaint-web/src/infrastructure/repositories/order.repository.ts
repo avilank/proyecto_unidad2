@@ -20,6 +20,8 @@ export interface OrderQuery {
 
 export interface BinaryPredictionsResponse {
   items: BinaryPrediction[];
+  modeloLider: string | null;
+  confianzaLider: number | null;
   ensembleAvg: number | null;
   nivelRiesgo: string;
   consenso: string | null;
@@ -27,6 +29,7 @@ export interface BinaryPredictionsResponse {
 
 export interface MulticlassPredictionsResponse {
   items: MulticlassPrediction[];
+  modeloLider: string | null;
   tipoPredicho: string | null;
   agreement: string;
   confianza: number | null;

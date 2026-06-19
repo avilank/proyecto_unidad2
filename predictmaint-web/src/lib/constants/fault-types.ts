@@ -1,8 +1,14 @@
 import type { LucideIcon } from 'lucide-react';
 import { Flame, Gauge, Shuffle, Wrench, Zap } from 'lucide-react';
-import type { TipoFallo } from '@/core/types';
+import { TipoFallo } from '@/core/types';
 
-export const FAULT_TYPE_ORDER: TipoFallo[] = ['HDF', 'PWF', 'TWF', 'OSF', 'RNF'];
+export const FAULT_TYPE_ORDER: TipoFallo[] = [
+  TipoFallo.HDF,
+  TipoFallo.PWF,
+  TipoFallo.TWF,
+  TipoFallo.OSF,
+  TipoFallo.RNF,
+];
 
 export const FAULT_COLORS: Record<string, string> = {
   HDF: 'var(--color-danger)',
@@ -40,5 +46,11 @@ export const FAULT_ICONS: Record<string, LucideIcon> = {
 };
 
 export function emptyFaultCounts(): Record<TipoFallo, number> {
-  return { HDF: 0, PWF: 0, TWF: 0, OSF: 0, RNF: 0 };
+  return {
+    [TipoFallo.HDF]: 0,
+    [TipoFallo.PWF]: 0,
+    [TipoFallo.TWF]: 0,
+    [TipoFallo.OSF]: 0,
+    [TipoFallo.RNF]: 0,
+  };
 }

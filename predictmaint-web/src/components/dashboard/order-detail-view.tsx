@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Topbar } from '@/components/common/topbar';
+import { RagDetailText } from '@/components/common/rag-detail-text';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -135,17 +136,20 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
               )}
 
               <div>
-                <p className="mb-2 text-sm font-semibold text-ink">Recomendaciones RAG generadas</p>
+                <p className="mb-2 text-sm font-semibold text-ink">Recomendaciones del RAG</p>
                 <div className="space-y-2">
                   {(rag.data?.acciones ?? []).map((a) => (
                     <div
                       key={a.id ?? a.orden}
                       className="rounded-md border border-border-soft bg-surface-2 p-3 text-sm"
                     >
-                      <p className="font-semibold text-ink">
-                        {a.orden}. {a.titulo}
-                      </p>
-                      <p className="text-ink-soft">{a.detalle}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-ink">
+                          {a.orden}. {a.titulo}
+                        </p>
+                        <Badge variant={ragPriorityVariant(a.prioridad)}>{a.prioridad}</Badge>
+                      </div>
+                      <RagDetailText text={a.detalle} />
                     </div>
                   ))}
                   {!rag.data?.acciones?.length && (
@@ -233,6 +237,19 @@ function Info({ label, value }: { label: string; value: string }) {
       <p className="font-medium text-ink">{value}</p>
     </div>
   );
+}
+
+function ragPriorityVariant(prioridad: string): 'critical' | 'high' | 'medium' | 'default' {
+  switch (prioridad?.toUpperCase()) {
+    case 'CRITICO':
+      return 'critical';
+    case 'ALTO':
+      return 'high';
+    case 'MEDIO':
+      return 'medium';
+    default:
+      return 'default';
+  }
 }
 
 function prettyModelSlug(model: string) {

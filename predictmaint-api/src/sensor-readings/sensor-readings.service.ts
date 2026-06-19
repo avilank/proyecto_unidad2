@@ -40,7 +40,7 @@ import { Orden } from '../database/models/orden.model';
 import { PrediccionFallo } from '../database/models/prediccion-fallo.model';
 import { RecomendacionRag } from '../database/models/recomendacion-rag.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
-import { MlGatewayService, MlPredictFeatures } from '../ml-gateway/ml-gateway.service';
+import { MlGatewayService, MlPredictFeatures, MlRagSource } from '../ml-gateway/ml-gateway.service';
 import { MlModelsService } from '../ml-models/ml-models.service';
 import {
   s1PredictionPatch,
@@ -181,10 +181,12 @@ export class SensorReadingsService {
     tipoFallo: string,
     maquinaCodigo: string,
   ): Promise<void> {
+    const fuentes = await this.getActiveRagSources();
     const ragResult = await this.mlGateway.rag({
       tipoFallo,
       maquinaId: maquinaCodigo,
       historial: [],
+      fuentes,
     });
 
     for (const acc of ragResult.acciones) {
@@ -207,6 +209,21 @@ export class SensorReadingsService {
         recomendacion: acc.detalle,
       });
     }
+  }
+
+  private async getActiveRagSources(): Promise<MlRagSource[]> {
+    const rows = await this.fuenteRagModel.findAll({
+      where: { activo: true },
+      order: [['idFuente', 'ASC']],
+    });
+
+    return rows.map((f) => ({
+      id: f.idFuente,
+      titulo: f.titulo,
+      autor: f.autor ?? null,
+      url: f.url ?? null,
+      descripcion: f.autor ?? null,
+    }));
   }
 
   private async scheduleAssignmentRetry(

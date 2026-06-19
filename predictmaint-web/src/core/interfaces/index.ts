@@ -11,6 +11,7 @@ import type {
   OrderDetail,
   OrderEvent,
   RagPlan,
+  RagSource,
   Technician,
   User,
 } from '@/core/entities';
@@ -64,6 +65,7 @@ export interface IPredictionRepository {
 
 export interface IRagRepository {
   getByOrderId(orderId: string): Promise<RagPlan>;
+  regenerate(orderId: string, payload?: { escalado?: boolean; fuenteIds?: number[] }): Promise<RagPlan>;
 }
 
 export interface ITechnicianRepository {
@@ -87,5 +89,6 @@ export interface IAnalyticsRepository {
 
 export interface IConfigRepository {
   getConfig(): Promise<AppConfig>;
+  getRagSources(): Promise<RagSource[]>;
 }
 

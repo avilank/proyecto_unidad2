@@ -518,13 +518,13 @@ function LiveMetric({
   return (
     <div
       className={cn('rounded-lg px-3 py-2 transition-colors', flash && 'ring-1 ring-accent/40')}
-      // style={{
-      //   backgroundColor: flash
-      //     ? 'rgba(48, 156, 228, 0.2)'
-      //     : fault
-      //       ? METRIC_BG_FAULT
-      //       : METRIC_BG_NEUTRAL,
-      // }}
+      style={{
+        backgroundColor: flash
+          ? 'rgba(48, 156, 228, 0.2)'
+          : fault
+            ? METRIC_BG_FAULT
+            : METRIC_BG_NEUTRAL,
+      }}
     >
       <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
         {label}
