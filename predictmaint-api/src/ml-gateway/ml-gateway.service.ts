@@ -71,6 +71,14 @@ export interface MlRagAction {
   detalle: string;
 }
 
+export interface MlRagSource {
+  id?: number;
+  titulo: string;
+  autor?: string | null;
+  url?: string | null;
+  descripcion?: string | null;
+}
+
 export interface MlRagResponse {
   tipoFallo: string;
   escalado: boolean;
@@ -107,6 +115,7 @@ export class MlGatewayService {
     maquinaId: string;
     historial: unknown[];
     escalado?: boolean;
+    fuentes?: MlRagSource[];
   }): Promise<MlRagResponse> {
     const { data } = await this.client.post<MlRagResponse>('/rag', payload);
     return data;

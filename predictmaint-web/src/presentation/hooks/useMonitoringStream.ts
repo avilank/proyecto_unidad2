@@ -54,7 +54,7 @@ export function useMonitoringStream(): MonitoringStreamState {
       simulatedRef.current.add(maquinaId);
       setState((prev) => ({
         ...prev,
-        simulatedMachineIds: [...simulatedRef.current],
+        simulatedMachineIds: Array.from(simulatedRef.current),
         readingTick: prev.readingTick + 1,
         lastEventAt: new Date().toISOString(),
       }));
@@ -118,13 +118,15 @@ export function useMonitoringStream(): MonitoringStreamState {
       pollTimerRef.current = setInterval(revalidate, MONITORING_DATA_INTERVAL_MS);
     }, MONITORING_INITIAL_BATCH_MS);
 
+    const simulated = simulatedRef.current;
+
     return () => {
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       clearTimeout(startPollTimer);
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
       esRef.current?.close();
       esRef.current = null;
-      simulatedRef.current.clear();
+      simulated.clear();
       setState((prev) => ({
         isConnected: false,
         lastEventAt: null,

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { BinaryPrediction, MulticlassPrediction, Order, SensorReading } from '@/core/entities';
 import { Topbar } from '@/components/common/topbar';
+import { RagDetailText } from '@/components/common/rag-detail-text';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,8 @@ import { useMachine } from '@/presentation/hooks/useMachines';
 import { useOrders } from '@/presentation/hooks/useOrders';
 import { useBinaryPredictions, useMulticlassPredictions } from '@/presentation/hooks/usePredictions';
 import { useRagPlan } from '@/presentation/hooks/useRag';
+import { useRagSources } from '@/presentation/hooks/useConfig';
+import { ragService } from '@/application/services/rag.service';
 
 const UMBRAL_FALLA = 0.5;
 
@@ -106,8 +109,6 @@ export function AnalysisView({
   const s2HasData =
     (multiclass.data?.items?.length ?? 0) > 0 || Boolean(analysisOrder?.tipoFallo);
 
-  const s3HasData = (rag.data?.acciones?.length ?? 0) > 0;
-
   // Siempre empezar en S-1 al cambiar de orden (sin saltos automáticos entre tabs).
   useEffect(() => {
     setTab('s1');
@@ -129,7 +130,7 @@ export function AnalysisView({
         right={<Badge variant="accent">ANÁLISIS AUTOMÁTICO</Badge>}
       />
 
-      <Card className="border-danger/30 bg-danger/5">
+      <Card className=" bg-danger/5">
         <CardContent className="flex flex-wrap items-center gap-3 py-3 text-sm">
           <span className="font-semibold text-ink">{machineId}</span>
           {sensorReading?.tipo && (
@@ -185,13 +186,13 @@ export function AnalysisView({
         </CardContent>
       </Card>
 
-      <PipelineSteps
+      {/* <PipelineSteps
         s1Done={Boolean(binary.data)}
         s1Falla={s1Falla}
         s2Done={s2HasData}
         tecnicoAsignado={Boolean(analysisOrder?.tecnicoId)}
         s3Done={s3HasData}
-      />
+      /> */}
 
       <div className="grid grid-cols-1 gap-2 rounded-lg border border-border bg-surface p-2 md:grid-cols-3">
         {TABS.map((t) => {
@@ -266,6 +267,7 @@ export function AnalysisView({
               data={rag.data ?? undefined}
               isLoading={rag.isLoading}
               orderId={analysisOrder?.id ?? null}
+              onRegenerated={() => rag.mutate()}
             />
           )}
         </>
@@ -368,68 +370,6 @@ function PredictionTab({
         ))}
       </div>
     </div>
-    </div>
-  );
-}
-
-function PipelineSteps({
-  s1Done,
-  s1Falla,
-  s2Done,
-  tecnicoAsignado,
-  s3Done,
-}: {
-  s1Done: boolean;
-  s1Falla: boolean;
-  s2Done: boolean;
-  tecnicoAsignado: boolean;
-  s3Done: boolean;
-}) {
-  const steps = [
-    {
-      n: 1,
-      label: 'S-1 Predicción',
-      status: !s1Done ? 'pendiente' : s1Falla ? 'falla' : 'ok',
-    },
-    {
-      n: 2,
-      label: 'S-2 Clasificación',
-      status: !s1Falla ? 'bloqueado' : s2Done ? 'ok' : 'pendiente',
-    },
-    {
-      n: '→',
-      label: 'Asignación técnico',
-      status: !s1Falla ? 'bloqueado' : tecnicoAsignado ? 'ok' : 'pendiente',
-    },
-    {
-      n: 3,
-      label: 'S-3 RAG',
-      status: !s2Done ? 'bloqueado' : s3Done ? 'ok' : 'pendiente',
-    },
-  ] as const;
-
-  return (
-    <div className="flex flex-wrap gap-2 rounded-lg border border-border bg-surface p-3">
-      {steps.map((step, i) => (
-        <div key={step.label} className="flex items-center gap-2">
-          {i > 0 && <span className="text-ink-muted/40">→</span>}
-          <div
-            className={`rounded-md px-3 py-1.5 text-xs ${
-              step.status === 'ok'
-                ? 'bg-success/10 text-success'
-                : step.status === 'falla'
-                  ? 'bg-danger/10 text-danger'
-                  : step.status === 'bloqueado'
-                    ? 'bg-surface-2 text-ink-muted/50'
-                    : 'bg-warning/10 text-warning'
-            }`}
-          >
-            <span className="font-bold">{step.n}</span> {step.label}
-            {step.status === 'falla' && ' · FALLA'}
-            {step.status === 'bloqueado' && ' · —'}
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
@@ -555,39 +495,123 @@ function RagTab({
   data,
   isLoading,
   orderId,
+  onRegenerated,
 }: {
   data?: {
     acciones?: { orden: number; titulo: string; detalle: string | null; prioridad: string }[];
+    fuentes?: string[];
     estado?: string;
   };
   isLoading?: boolean;
   orderId: string | null;
+  onRegenerated?: () => void;
 }) {
+  const sources = useRagSources();
+  const activeSources = useMemo(
+    () => (sources.data ?? []).filter((source) => source.activa),
+    [sources.data],
+  );
+  const [selectedSourceIds, setSelectedSourceIds] = useState<number[]>([]);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [regenerateError, setRegenerateError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (selectedSourceIds.length === 0 && activeSources.length > 0) {
+      setSelectedSourceIds(activeSources.map((source) => source.id));
+    }
+  }, [activeSources, selectedSourceIds.length]);
+
+  const toggleSource = (sourceId: number) => {
+    setSelectedSourceIds((current) =>
+      current.includes(sourceId)
+        ? current.filter((id) => id !== sourceId)
+        : [...current, sourceId],
+    );
+  };
+
+  const handleRegenerate = async () => {
+    if (!orderId || selectedSourceIds.length === 0) return;
+    setIsRegenerating(true);
+    setRegenerateError(null);
+    try {
+      await ragService.regenerate(orderId, { fuenteIds: selectedSourceIds });
+      onRegenerated?.();
+    } catch {
+      setRegenerateError('No se pudo regenerar el plan RAG con las fuentes seleccionadas.');
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
   if (isLoading) return <Skeleton className="h-[380px] w-full" />;
 
   return (
     <div className="grid gap-4 xl:grid-cols-3">
       <Card className="xl:col-span-2">
         <CardHeader>
-          <CardTitle>Plan de Acción RAG</CardTitle>
+          <CardTitle>Recomendaciones del RAG</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {(data?.acciones ?? []).map((a) => (
             <div key={a.orden} className="rounded-md border border-border-soft bg-surface-2 p-3">
-              <p className="text-sm font-semibold text-ink">
-                {a.orden}. {a.titulo}
-              </p>
-              <p className="mt-1 text-sm text-ink-soft">{a.detalle ?? 'Sin detalle'}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-semibold text-ink">
+                  {a.orden}. {a.titulo}
+                </p>
+                <Badge variant={ragPriorityVariant(a.prioridad)}>{a.prioridad}</Badge>
+              </div>
+              <p className="mt-1 text-[11px] uppercase tracking-wide text-accent">Recomendacion del RAG</p>
+              <RagDetailText text={a.detalle} />
             </div>
           ))}
+          {(data?.fuentes?.length ?? 0) > 0 && (
+            <div className="rounded-md border border-border-soft bg-surface-2 p-3 text-xs text-ink-muted">
+              <p className="font-semibold text-ink">Fuentes usadas</p>
+              <p className="mt-1">{data?.fuentes?.join(' · ')}</p>
+            </div>
+          )}
         </CardContent>
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle>Respuesta del Técnico</CardTitle>
+          <CardTitle>Fuentes y Respuesta</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <StatusPill status="pendiente" label="Pendiente de respuesta" />
+          <div className="rounded-md border border-border-soft bg-surface-2 p-3">
+            <p className="text-sm font-semibold text-ink">Fuentes RAG disponibles</p>
+            <p className="mt-1 text-xs text-ink-muted">
+              Selecciona las fuentes que el LLM puede usar al regenerar el plan.
+            </p>
+            <div className="mt-3 space-y-2">
+              {activeSources.map((source) => (
+                <label key={source.id} className="flex items-start gap-2 text-xs text-ink-soft">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 accent-accent"
+                    checked={selectedSourceIds.includes(source.id)}
+                    onChange={() => toggleSource(source.id)}
+                  />
+                  <span>
+                    <span className="font-semibold text-ink">{source.fuente}</span>
+                    {source.descripcion ? ` · ${source.descripcion}` : ''}
+                  </span>
+                </label>
+              ))}
+              {!sources.isLoading && activeSources.length === 0 && (
+                <p className="text-xs text-ink-muted">No hay fuentes activas configuradas.</p>
+              )}
+            </div>
+          </div>
+          <Button
+            variant="secondary"
+            fullWidth
+            disabled={!orderId || selectedSourceIds.length === 0 || isRegenerating}
+            onClick={handleRegenerate}
+          >
+            {isRegenerating ? 'Regenerando...' : 'Regenerar con fuentes'}
+          </Button>
+          {regenerateError && <p className="text-xs text-danger">{regenerateError}</p>}
           <Button fullWidth>Confirmar acción</Button>
           <Button variant="secondary" fullWidth>
             Rechazar / Analizar manualmente
@@ -597,6 +621,19 @@ function RagTab({
       </Card>
     </div>
   );
+}
+
+function ragPriorityVariant(prioridad: string): 'critical' | 'high' | 'medium' | 'default' {
+  switch (prioridad?.toUpperCase()) {
+    case 'CRITICO':
+      return 'critical';
+    case 'ALTO':
+      return 'high';
+    case 'MEDIO':
+      return 'medium';
+    default:
+      return 'default';
+  }
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

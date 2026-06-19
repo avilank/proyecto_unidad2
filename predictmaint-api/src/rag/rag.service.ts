@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
+import { Op } from 'sequelize';
 import { EstadoOrden } from '../common/enums';
 import { findMaquinaByCodigo } from '../common/utils/maquina.util';
 import { resolveModeloId } from '../common/utils/modelo-ml.util';
@@ -13,7 +14,7 @@ import { Orden } from '../database/models/orden.model';
 import { RecomendacionRag } from '../database/models/recomendacion-rag.model';
 import { RespuestaRecomendacion } from '../database/models/respuesta-recomendacion.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
-import { MlGatewayService } from '../ml-gateway/ml-gateway.service';
+import { MlGatewayService, MlRagSource } from '../ml-gateway/ml-gateway.service';
 
 @Injectable()
 export class RagService {
@@ -85,6 +86,25 @@ export class RagService {
     return this.toPlanResponse(orderCodigo);
   }
 
+  private async getRagSources(fuenteIds?: number[]): Promise<MlRagSource[]> {
+    const where =
+      fuenteIds && fuenteIds.length > 0
+        ? { idFuente: { [Op.in]: fuenteIds } }
+        : { activo: true };
+    const rows = await this.fuenteModel.findAll({
+      where,
+      order: [['idFuente', 'ASC']],
+    });
+
+    return rows.map((f) => ({
+      id: f.idFuente,
+      titulo: f.titulo,
+      autor: f.autor ?? null,
+      url: f.url ?? null,
+      descripcion: f.autor ?? null,
+    }));
+  }
+
   async accept(orderCodigo: string) {
     const { orden } = await this.getLiderClasificacion(orderCodigo);
     await this.respuestaModel.create({
@@ -123,14 +143,16 @@ export class RagService {
     return this.toPlanResponse(orderCodigo);
   }
 
-  async regenerate(orderCodigo: string, escalado = false) {
+  async regenerate(orderCodigo: string, escalado = false, fuenteIds?: number[]) {
     const { orden, lider } = await this.getLiderClasificacion(orderCodigo);
     const maquinaCodigo = orden.maquina?.codigo ?? '';
+    const fuentes = await this.getRagSources(fuenteIds);
     const ragResult = await this.mlGateway.rag({
       tipoFallo: lider.tipoFallo?.codigo ?? 'RNF',
       maquinaId: maquinaCodigo,
       historial: [],
       escalado,
+      fuentes,
     });
 
     await this.recomendacionModel.destroy({ where: { idClasificacion: lider.idClasificacion } });

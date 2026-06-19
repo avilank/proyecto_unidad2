@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsOptional, IsString } from 'class-validator';
 
 export class RejectRagPlanDto {
   @ApiPropertyOptional()
@@ -13,4 +13,10 @@ export class RegenerateRagPlanDto {
   @IsOptional()
   @IsBoolean()
   escalado?: boolean;
+
+  @ApiPropertyOptional({ type: [Number], description: 'IDs de fuentes RAG a usar en la regeneración' })
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  fuenteIds?: number[];
 }

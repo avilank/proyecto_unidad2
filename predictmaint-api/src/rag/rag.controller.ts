@@ -29,6 +29,6 @@ export class RagController {
   @Post('plan/:orderId/regenerate')
   @ApiOperation({ summary: 'Regenerar plan RAG' })
   regenerate(@Param('orderId') orderId: string, @Body() dto: RegenerateRagPlanDto) {
-    return this.ragService.regenerate(orderId, dto.escalado);
+    return this.ragService.regenerate(orderId, dto.escalado, dto.fuenteIds);
   }
 }

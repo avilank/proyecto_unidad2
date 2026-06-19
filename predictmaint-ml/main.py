@@ -16,7 +16,10 @@ from rag import generate_action_plan
 
 load_dotenv()
 
-API_KEY = os.getenv("API_KEY", "dev-ml-key-change-me")
+RAW_API_KEY = os.getenv("API_KEY", "dev-ml-key-change-me")
+API_KEY = os.getenv("ML_API_KEY") or (
+    "ml-secret-key" if RAW_API_KEY.startswith(("sk-or-", "sk-")) else RAW_API_KEY
+)
 
 RISK_THRESHOLDS = [
     ("LOW", 0.0, 0.40),
@@ -39,6 +42,8 @@ class RagRequest(BaseModel):
     tipoFallo: str
     maquinaId: str
     historial: list[Any] = Field(default_factory=list)
+    fuentes: list[dict[str, Any]] = Field(default_factory=list)
+    escalado: bool | None = None
 
 
 def verify_api_key(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> None:
@@ -219,6 +224,8 @@ def rag(request: RagRequest) -> dict[str, Any]:
             tipo_fallo=request.tipoFallo,
             maquina_id=request.maquinaId,
             historial=request.historial,
+            fuentes=request.fuentes,
+            escalado=request.escalado,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

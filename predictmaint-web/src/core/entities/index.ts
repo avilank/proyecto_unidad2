@@ -214,12 +214,22 @@ export interface RagAction {
 export interface RagPlan {
   id: number;
   ordenId: string;
+  orderId?: string;
   tipoFallo: TipoFallo;
   modeloOrigen: string | null;
   escalado: boolean;
   estado: EstadoPlanRag;
   generadoEn: string;
   acciones?: RagAction[];
+  fuentes?: string[];
+}
+
+export interface RagSource {
+  id: number;
+  fuente: string;
+  tipoFallo: TipoFallo | null;
+  descripcion: string | null;
+  activa: boolean;
 }
 
 export interface RepetitiveFault {

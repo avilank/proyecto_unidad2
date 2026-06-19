@@ -4,6 +4,15 @@ import { ConfiguracionAlertas } from '../database/models/configuracion-alertas.m
 import { FuenteRag } from '../database/models/fuente-rag.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
 
+const RAG_SOURCE_DESCRIPTIONS: Record<string, string> = {
+  'Theissler et al. (2021)': 'ML para mantenimiento predictivo, monitoreo de condición y priorización de riesgo.',
+  'Pashmforoush et al. (2025)': 'Buenas prácticas de diagnóstico para desgaste, sobrecarga y modos de falla.',
+  'Cai et al. (2023)': 'Sensores industriales, análisis de señales y prevención de fallas progresivas.',
+  'Araujo et al. (2025)': 'Confiabilidad operacional y mantenimiento preventivo/correctivo en sistemas electromecánicos.',
+  'Hesser & Markert (2019)': 'Máquinas herramienta, desgaste de herramienta, vibración y control de proceso.',
+  'Jakobs et al. (2026)': 'Gestión de fallas aleatorias, inspección manual y escalamiento técnico seguro.',
+};
+
 @Injectable()
 export class ConfigCatalogService {
   constructor(
@@ -68,7 +77,7 @@ export class ConfigCatalogService {
       id: f.idFuente,
       fuente: f.titulo,
       tipoFallo: null,
-      descripcion: f.autor ?? null,
+      descripcion: RAG_SOURCE_DESCRIPTIONS[f.titulo] ?? f.autor ?? null,
       activa: f.activo,
     }));
   }
@@ -81,7 +90,7 @@ export class ConfigCatalogService {
       id: f.idFuente,
       fuente: f.titulo,
       tipoFallo: null,
-      descripcion: f.autor ?? null,
+      descripcion: RAG_SOURCE_DESCRIPTIONS[f.titulo] ?? f.autor ?? null,
       activa: f.activo,
     };
   }
