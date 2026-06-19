@@ -224,14 +224,14 @@ export function AnalysisView({
 
       <div className="flex flex-col gap-4 px-6 py-5">
       {!s1Falla && !loading && binary.data && tab === 's1' && (
-        <p className="rounded-md border border-border-soft bg-surface-2 px-4 py-2 text-sm text-ink-muted">
+        <p className="rounded-md bg-surface-2 px-4 py-2 text-sm text-ink-muted">
           S-1 no confirmó falla (ensemble &lt; {UMBRAL_FALLA}) — el pipeline se detiene aquí. Tabs 2 y 3
           permanecen bloqueados.
         </p>
       )}
 
       {tab === 's1' && s1Falla && !loading && (
-        <p className="rounded-md border border-success/30 bg-success/5 px-4 py-2 text-sm text-ink-soft">
+        <p className="rounded-md bg-success/5 px-4 py-2 text-sm text-ink-soft">
           S-1 confirmó falla. Puede abrir el tab <strong>2 Clasificación</strong> — el sistema ya asignó
           técnico y generó recomendaciones RAG en segundo plano.
         </p>
@@ -305,7 +305,7 @@ function PredictionTab({
   return (
     <div className="space-y-4">
       {lider && (
-        <div className="rounded-md border border-accent/40 bg-accent/5 px-4 py-3 text-sm">
+        <div className="rounded-md bg-accent/5 px-4 py-3 text-sm">
           <p className="font-semibold text-ink">
             Modelo líder S-1: {prettyModel(data?.modeloLider ?? lider.modelo)}
           </p>
@@ -318,8 +318,8 @@ function PredictionTab({
       )}
 
     <div className="grid gap-4 xl:grid-cols-4">
-      <Card className="xl:col-span-1">
-        <CardHeader>
+      <Card className="border-0 bg-surface-2 shadow-none xl:col-span-1">
+        <CardHeader className="border-b-0">
           <CardTitle>Datos del sensor</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
@@ -350,31 +350,80 @@ function PredictionTab({
 
       <div className="grid gap-4 xl:col-span-3 xl:grid-cols-3">
         {(data?.items ?? []).map((p) => (
-          <Card key={p.modelo} className={p.esLider ? 'border-accent' : undefined}>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between gap-2">
-                {prettyModel(p.modelo)}
-                {p.esLider && <Badge variant="accent">Líder</Badge>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div className="flex items-center justify-between">
-                <Badge variant={p.prediccion === 'FALLA' ? 'danger' : 'success'}>{p.prediccion}</Badge>
-                <span className="font-bold text-ink">{p.probabilidad.toFixed(1)}%</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs text-ink-muted">
-                <Metric label="Accuracy" value={fmtNum(p.accuracy)} />
-                <Metric label="ROC-AUC" value={fmtRoc(p.rocAuc)} />
-                <Metric label="Precision" value={fmtNum(p.precision)} />
-                <Metric label="Recall" value={fmtNum(p.recall)} />
-                <Metric label="F1" value={fmtNum(p.f1Score)} />
-              </div>
-            </CardContent>
-          </Card>
+          <BinaryModelCard key={p.modelo} prediction={p} />
         ))}
       </div>
     </div>
     </div>
+  );
+}
+
+function prettyPrediccion(prediccion: string) {
+  return prediccion.replace(/_/g, ' ');
+}
+
+function BinaryModelCard({ prediction: p }: { prediction: BinaryPrediction }) {
+  const isFalla = p.prediccion === 'FALLA';
+  const pct = Math.min(100, Math.max(0, p.probabilidad));
+
+  return (
+    <Card
+      className={cn(
+        'border-0 bg-surface-2 shadow-none',
+        p.esLider && 'ring-1 ring-accent/25',
+      )}
+    >
+      <CardHeader className="border-b-0 pb-2">
+        <CardTitle className="flex flex-col gap-0.5">
+          <span>{prettyModel(p.modelo)}</span>
+          {p.esLider && (
+            <span className="text-[10px] font-medium uppercase tracking-wide text-accent">
+              Mayor confianza
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 pt-0 text-sm">
+        <div className="space-y-2">
+          <div
+            className={cn(
+              'flex items-center justify-between rounded-lg px-3 py-2',
+              isFalla ? 'bg-danger/15' : 'bg-success/15',
+            )}
+          >
+            <span
+              className={cn(
+                'text-sm font-semibold',
+                isFalla ? 'text-danger' : 'text-success',
+              )}
+            >
+              {prettyPrediccion(p.prediccion)}
+            </span>
+            <span className="text-sm font-bold text-ink">{pct.toFixed(1)}%</span>
+          </div>
+          <div className="h-2.5 w-full overflow-hidden rounded-full bg-[#1a1f2e]">
+            <div
+              className={cn(
+                'h-full rounded-full transition-all duration-500',
+                isFalla ? 'bg-danger' : 'bg-success',
+              )}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2 pt-3">
+          <p className="text-xs text-ink-muted">Métricas</p>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+            <Metric label="Accuracy" value={fmtNum(p.accuracy)} />
+            <Metric label="ROC-AUC" value={fmtRoc(p.rocAuc)} />
+            <Metric label="Precision" value={fmtNum(p.precision)} />
+            <Metric label="Recall" value={fmtNum(p.recall)} />
+            <Metric label="F1-Score" value={fmtNum(p.f1Score)} className="col-span-2" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -402,7 +451,7 @@ function ClassificationTab({
   return (
     <div className="space-y-4">
       {lider && (
-        <div className="rounded-md border border-accent/40 bg-accent/5 px-4 py-3 text-sm">
+        <div className="rounded-md bg-accent/5 px-4 py-3 text-sm">
           <p className="font-semibold text-ink">
             Modelo líder S-2: {prettyModel(data?.modeloLider ?? lider.modelo)}
           </p>
@@ -414,7 +463,7 @@ function ClassificationTab({
         </div>
       )}
       <div
-        className={`rounded-md border px-4 py-3 text-sm ${
+        className={`rounded-md  px-4 py-3 text-sm ${
           tecnico
             ? 'border-success/30 bg-success/5'
             : tecnicoPendiente
@@ -899,9 +948,17 @@ function ragPriorityVariant(prioridad: string): 'critical' | 'low' | 'medium' | 
   }
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: string;
+  className?: string;
+}) {
   return (
-    <div>
+    <div className={className}>
       <p className="text-[11px] text-ink-muted">{label}</p>
       <p className="font-semibold text-ink">{value}</p>
     </div>

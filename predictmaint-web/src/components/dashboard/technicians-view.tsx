@@ -217,6 +217,7 @@ export function TechniciansView() {
 
       {modal && (
         <TechnicianFormModal
+          key={modal.mode === 'edit' ? `edit-${modal.technician.id}` : 'create'}
           mode={modal.mode}
           technician={modal.mode === 'edit' ? modal.technician : undefined}
           onClose={() => setModal(null)}
@@ -331,127 +332,60 @@ function TechnicianFormModal({
             />
           </ModalField>
 
-          {mode === 'create' ? (
-            <>
-              <ModalField label="Especialidad">
-                <ModalSelect
-                  value={especialidad}
-                  onChange={(e) => setEspecialidad(e.target.value as Especialidad)}
-                >
-                  {ESPECIALIDADES.map((e) => (
-                    <option key={e} value={e} style={{ backgroundColor: '#1c202c', color: '#e4e4f0' }}>
-                      {prettyEspecialidad(e)}
-                    </option>
-                  ))}
-                </ModalSelect>
-              </ModalField>
+          <ModalField label="Especialidad">
+            <ModalSelect
+              value={especialidad}
+              onChange={(e) => setEspecialidad(e.target.value as Especialidad)}
+            >
+              {ESPECIALIDADES.map((e) => (
+                <option key={e} value={e} style={{ backgroundColor: '#1c202c', color: '#e4e4f0' }}>
+                  {prettyEspecialidad(e)}
+                </option>
+              ))}
+            </ModalSelect>
+          </ModalField>
 
-              <ModalField label="Turno">
-                <ModalSelect value={turno} onChange={(e) => setTurno(e.target.value as Turno)}>
-                  {TURNOS.map((t) => (
-                    <option key={t} value={t} style={{ backgroundColor: '#1c202c', color: '#e4e4f0' }}>
-                      {prettyTurno(t)}
-                    </option>
-                  ))}
-                </ModalSelect>
-              </ModalField>
+          <ModalField label="Turno">
+            <ModalSelect value={turno} onChange={(e) => setTurno(e.target.value as Turno)}>
+              {TURNOS.map((t) => (
+                <option key={t} value={t} style={{ backgroundColor: '#1c202c', color: '#e4e4f0' }}>
+                  {prettyTurno(t)}
+                </option>
+              ))}
+            </ModalSelect>
+          </ModalField>
 
-              <ModalField label="Máquinas asignadas">
-                <ModalInput
-                  readOnly
-                  className="cursor-default text-ink-soft"
-                  placeholder="M-001, M-002, M-003"
-                />
-              </ModalField>
-
-              <ModalField label="Teléfono (WhatsApp)">
-                <ModalInput
-                  placeholder="+51 9XX XXX XXX"
-                  value={telefono}
-                  onChange={(e) => setTelefono(e.target.value)}
-                />
-              </ModalField>
-
-              <ModalField label="Email">
-                <ModalInput
-                  placeholder="tecnico@planta.pe"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </ModalField>
-            </>
-          ) : (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <ModalField label="Especialidad">
-                  <ModalSelect
-                    value={especialidad}
-                    onChange={(e) => setEspecialidad(e.target.value as Especialidad)}
-                  >
-                    {ESPECIALIDADES.map((e) => (
-                      <option key={e} value={e} style={{ backgroundColor: '#1c202c', color: '#e4e4f0' }}>
-                        {prettyEspecialidad(e)}
-                      </option>
-                    ))}
-                  </ModalSelect>
-                </ModalField>
-
-                <ModalField label="Turno">
-                  <ModalSelect value={turno} onChange={(e) => setTurno(e.target.value as Turno)}>
-                    {TURNOS.map((t) => (
-                      <option key={t} value={t} style={{ backgroundColor: '#1c202c', color: '#e4e4f0' }}>
-                        {prettyTurno(t)}
-                      </option>
-                    ))}
-                  </ModalSelect>
-                </ModalField>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <ModalField label="Estado">
-                  <ModalSelect
-                    value={estado}
-                    onChange={(e) => setEstado(e.target.value as EstadoTecnico)}
-                  >
-                    {ESTADOS.map((e) => (
-                      <option key={e} value={e} style={{ backgroundColor: '#1c202c', color: '#e4e4f0' }}>
-                        {prettyTechnicianStatus(e)}
-                      </option>
-                    ))}
-                  </ModalSelect>
-                </ModalField>
-
-                <ModalField label="Máquinas asignadas">
-                  <ModalInput
-                    readOnly
-                    className="cursor-default text-ink-soft"
-                    value={technician?.maquinas?.length ? technician.maquinas.join(', ') : ''}
-                    placeholder="M-001, M-002, M-003"
-                  />
-                </ModalField>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <ModalField label="Teléfono (WhatsApp)">
-                  <ModalInput
-                    placeholder="+51 9XX XXX XXX"
-                    value={telefono}
-                    onChange={(e) => setTelefono(e.target.value)}
-                  />
-                </ModalField>
-
-                <ModalField label="Email">
-                  <ModalInput
-                    placeholder="tecnico@planta.pe"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </ModalField>
-              </div>
-            </>
+          {mode === 'edit' && (
+            <ModalField label="Estado">
+              <ModalSelect
+                value={estado}
+                onChange={(e) => setEstado(e.target.value as EstadoTecnico)}
+              >
+                {ESTADOS.map((e) => (
+                  <option key={e} value={e} style={{ backgroundColor: '#1c202c', color: '#e4e4f0' }}>
+                    {prettyTechnicianStatus(e)}
+                  </option>
+                ))}
+              </ModalSelect>
+            </ModalField>
           )}
+
+          <ModalField label="Teléfono (WhatsApp)">
+            <ModalInput
+              placeholder="+51 9XX XXX XXX"
+              value={telefono}
+              onChange={(e) => setTelefono(e.target.value)}
+            />
+          </ModalField>
+
+          <ModalField label="Email">
+            <ModalInput
+              placeholder="tecnico@planta.pe"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </ModalField>
 
           {error && <p className="text-xs text-danger">{error}</p>}
 
