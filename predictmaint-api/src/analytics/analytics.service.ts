@@ -57,6 +57,36 @@ export class AnalyticsService {
     return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
   }
 
+  /** Falla real = S-2 clasificó tipo + técnico asignado (intervención humana). */
+  private fallaConfirmadaIncludes() {
+    return [
+      { model: SolucionAplicada, required: false },
+      {
+        model: AnalisisFallo,
+        required: true,
+        include: [
+          {
+            model: ClasificacionFallo,
+            where: { esLider: true },
+            required: true,
+            include: [{ model: TipoFallo, required: false }],
+          },
+        ],
+      },
+    ];
+  }
+
+  private findOrdenesFallaConfirmada(from: Date) {
+    return this.ordenModel.findAll({
+      where: {
+        fechaCreacion: { [Op.gte]: from },
+        idTecnico: { [Op.ne]: null },
+      },
+      include: this.fallaConfirmadaIncludes(),
+      order: [['fechaCreacion', 'DESC']],
+    });
+  }
+
   async getDashboard() {
     const startDay = this.startOfDay();
     const totalMaquinas = await this.maquinaModel.count();
@@ -188,10 +218,7 @@ export class AnalyticsService {
 
   async getSummary(range: string) {
     const from = this.rangeStart(range);
-    const ordenes = await this.ordenModel.findAll({
-      where: { fechaCreacion: { [Op.gte]: from } },
-      include: [{ model: SolucionAplicada, required: false }],
-    });
+    const ordenes = await this.findOrdenesFallaConfirmada(from);
 
     let conRag = 0;
     let sinRag = 0;
@@ -205,7 +232,10 @@ export class AnalyticsService {
       const tipo = latestSolutionType(o);
       if (tipo === SolucionTipo.CON_RAG) {
         conRag += 1;
-      } else {
+      } else if (
+        tipo === SolucionTipo.PROPIA ||
+        tipo === SolucionTipo.RECHAZADA_MANUAL
+      ) {
         sinRag += 1;
       }
     }
@@ -222,18 +252,10 @@ export class AnalyticsService {
 
   async getFaultsByType(range: string) {
     const from = this.rangeStart(range);
-    const ordenes = await this.ordenModel.findAll({
-      where: { fechaCreacion: { [Op.gte]: from } },
-      include: [
-        {
-          model: AnalisisFallo,
-          include: [{ model: ClasificacionFallo, include: [{ model: TipoFallo }] }],
-        },
-      ],
-    });
+    const ordenes = await this.findOrdenesFallaConfirmada(from);
     const counts: Record<string, number> = {};
     for (const o of ordenes) {
-      const lider = o.analisis?.clasificaciones?.find((c) => c.esLider);
+      const lider = o.analisis?.clasificaciones?.[0];
       const codigo = lider?.tipoFallo?.codigo ?? 'RNF';
       counts[codigo] = (counts[codigo] ?? 0) + 1;
     }
@@ -399,6 +421,39 @@ export class AnalyticsService {
       value: Number(row[field as keyof LecturaSensor] ?? 0),
       maquinaId: row.maquina?.codigo ?? String(row.idMaquina),
     }));
+  }
+
+  async getAvailability() {
+    const maquinas = await this.maquinaModel.findAll({
+      attributes: ['idMaquina', 'codigo'],
+      order: [['codigo', 'ASC']],
+    });
+
+    const ordenesActivas = await this.ordenModel.findAll({
+      where: {
+        estado: { [Op.in]: [EstadoOrden.PENDIENTE, EstadoOrden.EN_PROGRESO] },
+      },
+      attributes: ['idMaquina', 'codigo', 'estado'],
+      include: [{ model: Maquina, attributes: ['codigo'] }],
+    });
+
+    const maquinasMantenimientoIds = new Set(ordenesActivas.map((o) => o.idMaquina));
+    const maquinasEnMantenimiento = maquinasMantenimientoIds.size;
+    const maquinasOperativas = Math.max(0, maquinas.length - maquinasEnMantenimiento);
+    const detalleMaquinasMantenimiento = [
+      ...new Set(
+        ordenesActivas.map((o) => o.maquina?.codigo ?? String(o.idMaquina)),
+      ),
+    ].sort();
+
+    return {
+      maquinas: {
+        total: maquinas.length,
+        operativas: maquinasOperativas,
+        enMantenimiento: maquinasEnMantenimiento,
+        detalleMantenimiento: detalleMaquinasMantenimiento,
+      },
+    };
   }
 
   exportCsv(type: string, range: string) {

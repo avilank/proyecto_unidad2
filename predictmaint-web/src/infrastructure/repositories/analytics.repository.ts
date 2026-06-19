@@ -2,6 +2,7 @@ import type { AnalyticsSummary } from '@/core/entities';
 import type {
   DashboardApiResponse,
   FaultByType,
+  AvailabilitySnapshot,
   MachineRecurrence,
   NotificationLogEntry,
   PaginatedResponse,
@@ -64,6 +65,10 @@ export class AnalyticsRepository implements IAnalyticsRepository {
     return apiClient.get<SensorTrendPoint[]>('/analytics/sensor-trend', {
       params: { variable, hours, ...(maquinaId ? { maquinaId } : {}) },
     });
+  }
+
+  getAvailability(): Promise<AvailabilitySnapshot> {
+    return apiClient.get<AvailabilitySnapshot>('/analytics/availability');
   }
 }
 

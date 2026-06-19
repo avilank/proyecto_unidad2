@@ -81,3 +81,12 @@ export interface SensorTrendPoint {
   value: number;
   maquinaId: string;
 }
+
+export interface AvailabilitySnapshot {
+  maquinas: {
+    total: number;
+    operativas: number;
+    enMantenimiento: number;
+    detalleMantenimiento: string[];
+  };
+}

@@ -41,6 +41,10 @@ export class AnalyticsService {
   getSensorTrend(variable = 'rotationalSpeed', hours = 24, maquinaId?: string) {
     return analyticsRepository.getSensorTrend(variable, hours, maquinaId);
   }
+
+  getAvailability() {
+    return analyticsRepository.getAvailability();
+  }
 }
 
 export const analyticsService = new AnalyticsService();

@@ -8,7 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 const KPI_CONFIG = [
   {
     key: 'alertas',
-    label: 'Alertas esta semana',
+    label: 'Fallas confirmadas',
     icon: Bell,
     tone: 'accent' as const,
     getValue: (s?: AnalyticsSummary) => s?.totalAlertas ?? 0,

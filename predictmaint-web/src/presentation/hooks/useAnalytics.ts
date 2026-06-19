@@ -52,4 +52,10 @@ export function useRecurrentFaults() {
   );
 }
 
+export function useAvailability() {
+  return useSWR('/analytics/availability', () => analyticsService.getAvailability(), {
+    refreshInterval: 15000,
+  });
+}
+
 export const useRepetitiveFaults = useRecurrentFaults;

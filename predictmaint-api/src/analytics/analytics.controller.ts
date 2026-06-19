@@ -50,6 +50,12 @@ export class AnalyticsController {
     );
   }
 
+  @Get('availability')
+  @ApiOperation({ summary: 'Disponibilidad de máquinas' })
+  getAvailability() {
+    return this.analyticsService.getAvailability();
+  }
+
   @Get('sensor-trend')
   @ApiOperation({ summary: 'Serie temporal de sensores' })
   getSensorTrend(

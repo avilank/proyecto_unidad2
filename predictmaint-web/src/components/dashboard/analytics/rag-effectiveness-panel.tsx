@@ -43,7 +43,7 @@ export function RagEffectivenessPanel({
       <CardHeader>
         <CardTitle>Efectividad del sistema</CardTitle>
         <p className="text-xs text-ink-muted">
-          Cada orden de la semana aparece en una sola categoría (suman 100 %)
+            Solo fallas con S-2 y técnico asignado · cada orden en una sola categoría (suman 100 %)
         </p>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -56,7 +56,7 @@ export function RagEffectivenessPanel({
         ) : (
           <>
             <p className="text-sm text-ink-soft">
-              <span className="font-semibold text-ink">{stats.total}</span> órdenes esta semana ·{' '}
+              <span className="font-semibold text-ink">{stats.total}</span> fallas confirmadas ·{' '}
               <span className="text-success">{stats.cerradas} cerradas</span> ·{' '}
               <span className="text-danger">{stats.abiertas} abiertas</span>
             </p>

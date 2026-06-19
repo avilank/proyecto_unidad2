@@ -98,6 +98,7 @@ export interface IAnalyticsRepository {
     hours?: number,
     maquinaId?: string,
   ): Promise<SensorTrendPoint[]>;
+  getAvailability(): Promise<import('@/core/types/api').AvailabilitySnapshot>;
 }
 
 export interface IConfigRepository {

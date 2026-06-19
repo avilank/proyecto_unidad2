@@ -1,6 +1,7 @@
 'use client';
 
 import { Topbar } from '@/components/common/topbar';
+import { AvailabilityPanel } from '@/components/dashboard/analytics/availability-panel';
 import { AnalyticsKpiRow } from '@/components/dashboard/analytics/analytics-kpi-row';
 import { CsvLogTable } from '@/components/dashboard/analytics/csv-log-table';
 import { FaultAnalyticsPanel } from '@/components/dashboard/analytics/fault-analytics-panel';
@@ -9,6 +10,7 @@ import { RecurrencePanel } from '@/components/dashboard/analytics/recurrence-pan
 import { UnattendedPanel } from '@/components/dashboard/analytics/unattended-panel';
 import {
   useAnalyticsSummary,
+  useAvailability,
   useFaultsByType,
   useMachineRecurrence,
   useNotificationLog,
@@ -20,6 +22,7 @@ export function AnalyticsView() {
   const unattended = useUnattendedOrders();
   const faults = useFaultsByType('week');
   const recurrence = useMachineRecurrence(7, 2);
+  const availability = useAvailability();
   const notificationLog = useNotificationLog(50);
 
   const logs = notificationLog.data?.items;
@@ -48,6 +51,8 @@ export function AnalyticsView() {
           <RagEffectivenessPanel summary={summary.data} isLoading={summary.isLoading} />
           <RecurrencePanel data={recurrence.data} isLoading={recurrence.isLoading} ventanaDias={7} minFallos={2} />
         </div>
+
+        <AvailabilityPanel data={availability.data} isLoading={availability.isLoading} />
 
         <CsvLogTable items={logs} isLoading={notificationLog.isLoading} />
       </div>
