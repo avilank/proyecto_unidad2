@@ -128,7 +128,7 @@ FAULT_ACTION_PLANS: dict[str, list[dict[str, str]]] = {
             ),
         },
         {
-            "prioridad": "ALTO",
+            "prioridad": "BAJO",
             "titulo": "Calibración del variador y sensores térmicos",
             "detalle": (
                 "Verificar lecturas de temperatura de proceso y ambiente. "
@@ -154,7 +154,7 @@ FAULT_ACTION_PLANS: dict[str, list[dict[str, str]]] = {
             ),
         },
         {
-            "prioridad": "ALTO",
+            "prioridad": "BAJO",
             "titulo": "Diagnóstico del variador de frecuencia",
             "detalle": (
                 "Medir corriente y voltaje en bornes del motor. "
@@ -180,7 +180,7 @@ FAULT_ACTION_PLANS: dict[str, list[dict[str, str]]] = {
             ),
         },
         {
-            "prioridad": "ALTO",
+            "prioridad": "BAJO",
             "titulo": "Auditoría del ciclo de herramientas",
             "detalle": (
                 "Registrar tiempo de uso y condiciones de corte. "
@@ -206,7 +206,7 @@ FAULT_ACTION_PLANS: dict[str, list[dict[str, str]]] = {
             ),
         },
         {
-            "prioridad": "ALTO",
+            "prioridad": "BAJO",
             "titulo": "Revisión de diseño operativo",
             "detalle": (
                 "Evaluar parámetros de operación vs. capacidad nominal de la máquina. "
@@ -295,8 +295,9 @@ def _fallback_sources(fault: str, fuentes: list[dict[str, Any]] | None = None) -
 def _priority_label(prioridad: str) -> str:
     labels = {
         "CRITICO": "Critica",
-        "ALTO": "Alta",
+        "BAJO": "Baja",
         "MEDIO": "Moderada",
+        "ALTO": "Baja",
     }
     return labels.get(prioridad.upper(), prioridad)
 
@@ -407,7 +408,7 @@ def _reference_guide_without_titles(fault: str) -> list[dict[str, str]]:
     ]
 
 
-VALID_PRIORITIES = frozenset({"CRITICO", "ALTO", "MEDIO"})
+VALID_PRIORITIES = frozenset({"CRITICO", "BAJO", "MEDIO"})
 
 
 def _normalize_priority(value: str) -> str:
@@ -416,7 +417,9 @@ def _normalize_priority(value: str) -> str:
         "CRITICA": "CRITICO",
         "CRÍTICO": "CRITICO",
         "CRÍTICA": "CRITICO",
-        "ALTA": "ALTO",
+        "ALTA": "BAJO",
+        "ALTO": "BAJO",
+        "BAJA": "BAJO",
         "MEDIA": "MEDIO",
     }
     return aliases.get(raw, raw)
@@ -426,7 +429,7 @@ def _extract_llm_priority(action: dict[str, Any], orden: int) -> str:
     prioridad = _normalize_priority(str(action.get("prioridad") or ""))
     if prioridad not in VALID_PRIORITIES:
         raise ValueError(
-            f"El LLM no devolvio prioridad valida (CRITICO, ALTO o MEDIO) para la recomendacion RAG #{orden}"
+            f"El LLM no devolvio prioridad valida (CRITICO, BAJO o MEDIO) para la recomendacion RAG #{orden}"
         )
     return prioridad
 
@@ -461,7 +464,7 @@ def _build_prompt(
                 "Usa SOLO las fuentes autorizadas incluidas en contexto_fuentes.",
                 "Devuelve exactamente 3 recomendaciones del RAG, ordenadas por urgencia operacional.",
                 "Cada recomendacion debe incluir prioridad, titulo y detalle generados por ti.",
-                "El campo prioridad debe ser exactamente uno de estos valores: CRITICO, ALTO o MEDIO.",
+                "El campo prioridad debe ser exactamente uno de estos valores: CRITICO, BAJO o MEDIO.",
                 "Tu debes decidir la prioridad de cada recomendacion segun el riesgo operacional, el tipo de fallo y la maquina.",
                 "La recomendacion #1 debe ser la mas urgente; asigna prioridad coherente con esa urgencia.",
                 "El campo titulo debe ser corto (maximo 80 caracteres), profesional y especifico para la maquina y el fallo.",
@@ -484,7 +487,7 @@ def _build_prompt(
                 "acciones": [
                     {
                         "orden": 1,
-                        "prioridad": "CRITICO | ALTO | MEDIO",
+                        "prioridad": "CRITICO | BAJO | MEDIO",
                         "titulo": "Recomendacion RAG personalizada para la maquina",
                         "detalle": "- Urgencia: Critica — ...\n- Tiempo limite: ...\n- Estandar interno: ...\n- Herramientas: ...\n- Accion recomendada: ...\n- Justificacion tecnica: ...",
                     }
@@ -566,7 +569,7 @@ def _generate_with_llm(
                     "Eres un asistente RAG de mantenimiento industrial. "
                     "Responde solo JSON valido. "
                     "Genera prioridad, titulos y detalles originales para cada recomendacion del RAG. "
-                    "La prioridad solo puede ser CRITICO, ALTO o MEDIO. "
+                    "La prioridad solo puede ser CRITICO, BAJO o MEDIO. "
                     "El detalle debe usar guiones en lineas separadas y argumentar tecnicamente la recomendacion."
                 ),
             },

@@ -42,8 +42,9 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-h-full flex-col">
       <Topbar
+        flush
         title={`Orden ${orderId} — Detalle Completo`}
         subtitle={`${data?.maquinaId ?? '—'} · ${data?.tipoFallo ?? '—'} · ${data?.detectadoEn ? new Date(data.detectadoEn).toLocaleDateString('es-PE') : ''}`}
         right={
@@ -53,6 +54,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
         }
       />
 
+      <div className="flex flex-col gap-4 px-6 pb-6 pt-5">
       {order.isLoading ? (
         <Skeleton className="h-[520px] w-full" />
       ) : (
@@ -147,7 +149,9 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                         <p className="font-semibold text-ink">
                           {a.orden}. {a.titulo}
                         </p>
-                        <Badge variant={ragPriorityVariant(a.prioridad)}>{a.prioridad}</Badge>
+                        <Badge variant={ragPriorityVariant(a.prioridad)}>
+                          {formatRagPriority(a.prioridad)}
+                        </Badge>
                       </div>
                       <RagDetailText text={a.detalle} />
                     </div>
@@ -226,6 +230,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -239,12 +244,27 @@ function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ragPriorityVariant(prioridad: string): 'critical' | 'high' | 'medium' | 'default' {
+function formatRagPriority(prioridad: string): string {
+  switch (prioridad?.toUpperCase()) {
+    case 'CRITICO':
+      return 'critico';
+    case 'MEDIO':
+      return 'medio';
+    case 'BAJO':
+    case 'ALTO':
+      return 'bajo';
+    default:
+      return prioridad?.toLowerCase() ?? '—';
+  }
+}
+
+function ragPriorityVariant(prioridad: string): 'critical' | 'low' | 'medium' | 'default' {
   switch (prioridad?.toUpperCase()) {
     case 'CRITICO':
       return 'critical';
+    case 'BAJO':
     case 'ALTO':
-      return 'high';
+      return 'low';
     case 'MEDIO':
       return 'medium';
     default:

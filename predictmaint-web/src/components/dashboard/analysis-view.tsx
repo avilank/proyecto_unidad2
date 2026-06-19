@@ -13,8 +13,10 @@ import { useMachine } from '@/presentation/hooks/useMachines';
 import { useOrders } from '@/presentation/hooks/useOrders';
 import { useBinaryPredictions, useMulticlassPredictions } from '@/presentation/hooks/usePredictions';
 import { useRagPlan } from '@/presentation/hooks/useRag';
-import { useRagSources } from '@/presentation/hooks/useConfig';
 import { ragService } from '@/application/services/rag.service';
+import { orderService } from '@/application/services/order.service';
+import { EstadoOrden, SolucionTipo } from '@/core/types';
+import { cn } from '@/lib/utils/cn';
 
 const UMBRAL_FALLA = 0.5;
 
@@ -123,93 +125,85 @@ export function AnalysisView({
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-h-full flex-col">
       <Topbar
+        className="pt-6 pb-6"
+        flush
         title={`Análisis de Máquina — ${machineId}`}
-        subtitle="Flujo: S-1 predicción → S-2 clasificación (si hay falla) → asignación de técnico → S-3 RAG"
+        // subtitle="Flujo: S-1 predicción → S-2 clasificación (si hay falla) → asignación de técnico → S-3 RAG"
         right={<Badge variant="accent">ANÁLISIS AUTOMÁTICO</Badge>}
       />
 
-      <Card className=" bg-danger/5">
-        <CardContent className="flex flex-wrap items-center gap-3 py-3 text-sm">
-          <span className="font-semibold text-ink">{machineId}</span>
-          {sensorReading?.tipo && (
-            <span className="text-ink-muted">Tipo lectura {sensorReading.tipo}</span>
-          )}
-          {analysisOrder?.nivelRiesgo && (
-            <Badge variant={riskBadgeVariant(analysisOrder.nivelRiesgo)}>
-              {analysisOrder.nivelRiesgo}
-            </Badge>
-          )}
-          {analysisOrder?.tipoFallo && (
-            <Badge variant="danger">{analysisOrder.tipoFallo}</Badge>
-          )}
-          {confianzaLider != null && (
-            <span className="text-ink-soft">
-              S-1: {modeloPrediccion ? `${prettyModel(modeloPrediccion)} · ` : ''}
-              {(confianzaLider * 100).toFixed(1)}%
-            </span>
-          )}
-          {multiclass.data?.modeloLider && analysisOrder?.tipoFallo && (
-            <span className="text-ink-soft">
-              S-2: {prettyModel(multiclass.data.modeloLider)} · {analysisOrder.tipoFallo}
-            </span>
-          )}
-          {analysisOrder?.id && <span className="text-accent">Orden: {analysisOrder.id}</span>}
-          {s1Falla && analysisOrder?.tecnico && (
-            <span className="text-ink-soft">
-              Técnico: <span className="font-semibold text-ink">{analysisOrder.tecnico.nombre}</span>
-            </span>
-          )}
-          {s1Falla && !analysisOrder?.tecnicoId && (
-            <Badge variant="default">Técnico: asignación pendiente</Badge>
-          )}
-          {orderItems.length > 1 && (
-            <select
-              className="ml-auto rounded-md border border-border bg-surface px-2 py-1 text-xs text-ink"
-              value={analysisOrder?.id ?? ''}
-              onChange={(e) => setSelectedOrderId(e.target.value)}
-            >
-              {orderItems.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.id} · {o.tipoFallo ?? 'sin fallo'} · {o.estado}
-                </option>
-              ))}
-            </select>
-          )}
-          <span className={orderItems.length > 1 ? '' : 'ml-auto'}>
-            <StatusPill
-              status={analysisOrder?.estado ?? 'pendiente'}
-              label={analysisOrder?.estado?.replace('_', ' ')}
-            />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 bg-[#2a1418] px-6 py-2.5 text-sm">
+        <span className="font-semibold text-ink">{machineId}</span>
+        {sensorReading?.tipo && (
+          <span className="text-ink-muted">Tipo lectura {sensorReading.tipo}</span>
+        )}
+        {analysisOrder?.nivelRiesgo && (
+          <Badge variant={riskBadgeVariant(analysisOrder.nivelRiesgo)}>
+            {analysisOrder.nivelRiesgo}
+          </Badge>
+        )}
+        {analysisOrder?.tipoFallo && <Badge variant="danger">{analysisOrder.tipoFallo}</Badge>}
+        {confianzaLider != null && (
+          <span className="text-ink-soft">
+            S-1: {modeloPrediccion ? `${prettyModel(modeloPrediccion)} · ` : ''}
+            {(confianzaLider * 100).toFixed(1)}%
           </span>
-        </CardContent>
-      </Card>
+        )}
+        {multiclass.data?.modeloLider && analysisOrder?.tipoFallo && (
+          <span className="text-ink-soft">
+            S-2: {prettyModel(multiclass.data.modeloLider)} · {analysisOrder.tipoFallo}
+          </span>
+        )}
+        {analysisOrder?.id && <span className="text-accent">Orden: {analysisOrder.id}</span>}
+        {s1Falla && analysisOrder?.tecnico && (
+          <span className="text-ink-soft">
+            Técnico: <span className="font-semibold text-ink">{analysisOrder.tecnico.nombre}</span>
+          </span>
+        )}
+        {s1Falla && !analysisOrder?.tecnicoId && (
+          <Badge variant="default">Técnico: asignación pendiente</Badge>
+        )}
+        {orderItems.length > 1 && (
+          <select
+            className="ml-auto rounded-md border border-border bg-surface px-2 py-1 text-xs text-ink"
+            value={analysisOrder?.id ?? ''}
+            onChange={(e) => setSelectedOrderId(e.target.value)}
+          >
+            {orderItems.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.id} · {o.tipoFallo ?? 'sin fallo'} · {o.estado}
+              </option>
+            ))}
+          </select>
+        )}
+        <span className={orderItems.length > 1 ? '' : 'ml-auto'}>
+          <StatusPill
+            status={analysisOrder?.estado ?? 'pendiente'}
+            label={analysisOrder?.estado?.replace('_', ' ')}
+          />
+        </span>
+      </div>
 
-      {/* <PipelineSteps
-        s1Done={Boolean(binary.data)}
-        s1Falla={s1Falla}
-        s2Done={s2HasData}
-        tecnicoAsignado={Boolean(analysisOrder?.tecnicoId)}
-        s3Done={s3HasData}
-      /> */}
-
-      <div className="grid grid-cols-1 gap-2 rounded-lg border border-border bg-surface p-2 md:grid-cols-3">
+      <div className="flex bg-bg">
         {TABS.map((t) => {
           const enabled = tabEnabled(t.key);
+          const active = tab === t.key;
           return (
             <button
               key={t.key}
               type="button"
               disabled={!enabled}
               onClick={() => enabled && setTab(t.key)}
-              className={`rounded-md px-3 py-2 text-left text-sm font-semibold transition-colors ${
-                tab === t.key
-                  ? 'bg-accent/15 text-accent'
+              className={cn(
+                'min-w-0 flex-1 px-4 py-3 text-left text-sm font-semibold transition-colors',
+                active
+                  ? 'border-b-2 border-b-accent bg-surface/40 text-accent'
                   : enabled
-                    ? 'text-ink-muted hover:bg-surface-2'
-                    : 'cursor-not-allowed text-ink-muted/40'
-              }`}
+                    ? 'border-b-2 border-b-transparent text-ink-muted hover:bg-surface/30 hover:text-ink'
+                    : 'cursor-not-allowed border-b-2 border-b-transparent text-ink-muted/40',
+              )}
             >
               {t.label}
               {!enabled && t.key !== 's1' && (
@@ -229,6 +223,7 @@ export function AnalysisView({
         })}
       </div>
 
+      <div className="flex flex-col gap-4 px-6 py-5">
       {!s1Falla && !loading && binary.data && tab === 's1' && (
         <p className="rounded-md border border-border-soft bg-surface-2 px-4 py-2 text-sm text-ink-muted">
           S-1 no confirmó falla (ensemble &lt; {UMBRAL_FALLA}) — el pipeline se detiene aquí. Tabs 2 y 3
@@ -267,11 +262,21 @@ export function AnalysisView({
               data={rag.data ?? undefined}
               isLoading={rag.isLoading}
               orderId={analysisOrder?.id ?? null}
-              onRegenerated={() => rag.mutate()}
+              order={analysisOrder}
+              multiclassMeta={{
+                modeloLider: multiclass.data?.modeloLider ?? null,
+                agreement: multiclass.data?.agreement ?? null,
+                confianza: multiclass.data?.confianza ?? null,
+              }}
+              onRegenerated={() => {
+                rag.mutate();
+                orders.mutate();
+              }}
             />
           )}
         </>
       )}
+      </div>
     </div>
   );
 }
@@ -495,140 +500,413 @@ function RagTab({
   data,
   isLoading,
   orderId,
+  order,
+  multiclassMeta,
   onRegenerated,
 }: {
   data?: {
     acciones?: { orden: number; titulo: string; detalle: string | null; prioridad: string }[];
     fuentes?: string[];
     estado?: string;
+    tipoFallo?: string;
   };
   isLoading?: boolean;
   orderId: string | null;
+  order?: Order | null;
+  multiclassMeta?: {
+    modeloLider: string | null;
+    agreement: string | null;
+    confianza: number | null;
+  };
   onRegenerated?: () => void;
 }) {
-  const sources = useRagSources();
-  const activeSources = useMemo(
-    () => (sources.data ?? []).filter((source) => source.activa),
-    [sources.data],
-  );
-  const [selectedSourceIds, setSelectedSourceIds] = useState<number[]>([]);
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  const [regenerateError, setRegenerateError] = useState<string | null>(null);
+  const [rejectComment, setRejectComment] = useState('');
+  const [solutionText, setSolutionText] = useState('');
+  const [solutionTipo, setSolutionTipo] = useState<SolucionTipo>(SolucionTipo.CON_RAG);
+  const [confirmAcceptOpen, setConfirmAcceptOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (selectedSourceIds.length === 0 && activeSources.length > 0) {
-      setSelectedSourceIds(activeSources.map((source) => source.id));
-    }
-  }, [activeSources, selectedSourceIds.length]);
+  const tipoFallo = data?.tipoFallo ?? order?.tipoFallo ?? '—';
+  const orderEstado = order?.estado ?? EstadoOrden.PENDIENTE;
+  const ragEstado = data?.estado ?? 'pendiente';
+  const canRespond = orderEstado === EstadoOrden.PENDIENTE && ragEstado === 'pendiente';
+  const canRegisterSolution =
+    orderEstado === EstadoOrden.EN_PROGRESO || ragEstado === 'aceptado';
+  const isFinalized = orderEstado === EstadoOrden.FINALIZADO;
 
-  const toggleSource = (sourceId: number) => {
-    setSelectedSourceIds((current) =>
-      current.includes(sourceId)
-        ? current.filter((id) => id !== sourceId)
-        : [...current, sourceId],
-    );
-  };
-
-  const handleRegenerate = async () => {
-    if (!orderId || selectedSourceIds.length === 0) return;
-    setIsRegenerating(true);
-    setRegenerateError(null);
+  const runAction = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    setActionError(null);
     try {
-      await ragService.regenerate(orderId, { fuenteIds: selectedSourceIds });
+      await fn();
       onRegenerated?.();
     } catch {
-      setRegenerateError('No se pudo regenerar el plan RAG con las fuentes seleccionadas.');
+      setActionError('No se pudo completar la acción. Intenta de nuevo.');
     } finally {
-      setIsRegenerating(false);
+      setBusy(false);
     }
   };
+
+  const handleAccept = () =>
+    runAction(async () => {
+      if (!orderId) return;
+      await ragService.accept(orderId);
+      setConfirmAcceptOpen(false);
+    });
+
+  const handleReject = () =>
+    runAction(async () => {
+      if (!orderId) return;
+      await ragService.reject(orderId, rejectComment.trim() || undefined);
+      setRejectComment('');
+    });
+
+  const handleRegisterSolution = () =>
+    runAction(async () => {
+      if (!orderId || !solutionText.trim()) return;
+      await orderService.registerSolution(orderId, {
+        descripcion: solutionText.trim(),
+        solucionTipo: solutionTipo,
+      });
+      setSolutionText('');
+    });
 
   if (isLoading) return <Skeleton className="h-[380px] w-full" />;
 
+  const metaParts = [
+    'Plan generado automáticamente',
+    tipoFallo !== '—' ? `Tipo ${tipoFallo}` : null,
+    multiclassMeta?.modeloLider
+      ? `${prettyModel(multiclassMeta.modeloLider)}${multiclassMeta.confianza != null ? ` ${multiclassMeta.confianza.toFixed(1)}%` : ''}`
+      : null,
+    multiclassMeta?.agreement ? `Agreement ${multiclassMeta.agreement}` : null,
+  ].filter(Boolean);
+
   return (
-    <div className="grid gap-4 xl:grid-cols-3">
-      <Card className="xl:col-span-2">
-        <CardHeader>
-          <CardTitle>Recomendaciones del RAG</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {(data?.acciones ?? []).map((a) => (
-            <div key={a.orden} className="rounded-md border border-border-soft bg-surface-2 p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-sm font-semibold text-ink">
-                  {a.orden}. {a.titulo}
-                </p>
-                <Badge variant={ragPriorityVariant(a.prioridad)}>{a.prioridad}</Badge>
-              </div>
-              <p className="mt-1 text-[11px] uppercase tracking-wide text-accent">Recomendacion del RAG</p>
-              <RagDetailText text={a.detalle} />
-            </div>
-          ))}
-          {(data?.fuentes?.length ?? 0) > 0 && (
-            <div className="rounded-md border border-border-soft bg-surface-2 p-3 text-xs text-ink-muted">
-              <p className="font-semibold text-ink">Fuentes usadas</p>
-              <p className="mt-1">{data?.fuentes?.join(' · ')}</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Fuentes y Respuesta</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <StatusPill status="pendiente" label="Pendiente de respuesta" />
-          <div className="rounded-md border border-border-soft bg-surface-2 p-3">
-            <p className="text-sm font-semibold text-ink">Fuentes RAG disponibles</p>
-            <p className="mt-1 text-xs text-ink-muted">
-              Selecciona las fuentes que el LLM puede usar al regenerar el plan.
+    <div className="space-y-4">
+      {metaParts.length > 0 && (
+        <p className="text-xs text-accent">{metaParts.join(' • ')}</p>
+      )}
+
+      <div className="grid gap-4 xl:grid-cols-3">
+        <Card className="xl:col-span-2">
+          <CardHeader>
+            <CardTitle>Plan de Acción RAG — {tipoFallo}</CardTitle>
+            <p className="text-xs text-ink-muted">
+              Basado en el historial de {order?.maquinaId ?? 'la máquina'} y tipo de fallo{' '}
+              {tipoFallo} confirmado
             </p>
-            <div className="mt-3 space-y-2">
-              {activeSources.map((source) => (
-                <label key={source.id} className="flex items-start gap-2 text-xs text-ink-soft">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5 accent-accent"
-                    checked={selectedSourceIds.includes(source.id)}
-                    onChange={() => toggleSource(source.id)}
-                  />
-                  <span>
-                    <span className="font-semibold text-ink">{source.fuente}</span>
-                    {source.descripcion ? ` · ${source.descripcion}` : ''}
-                  </span>
-                </label>
-              ))}
-              {!sources.isLoading && activeSources.length === 0 && (
-                <p className="text-xs text-ink-muted">No hay fuentes activas configuradas.</p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {(data?.acciones ?? []).map((a) => (
+              <div key={a.orden} className="flex gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-bold text-white">
+                  {a.orden}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold text-ink">{a.titulo}</p>
+                    <Badge variant={ragPriorityVariant(a.prioridad)}>
+                      {formatRagPriority(a.prioridad)}
+                    </Badge>
+                  </div>
+                  <RagDetailText text={a.detalle} />
+                </div>
+              </div>
+            ))}
+            {/* Fuentes RAG — oculto por ahora (no está en diseño Figma actual)
+            {(data?.fuentes?.length ?? 0) > 0 && (
+              <div className="rounded-md border border-border-soft bg-surface-2 p-3 text-xs text-ink-muted">
+                <p className="font-semibold text-ink">Fuentes RAG</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {data?.fuentes?.map((fuente) => (
+                    <span
+                      key={fuente}
+                      className="rounded-full border border-border bg-bg px-2.5 py-1 text-[11px] text-ink-soft"
+                    >
+                      {fuente}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            */}
+          </CardContent>
+        </Card>
+
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Respuesta del Técnico</CardTitle>
+              {/* <p className="text-xs text-ink-muted">
+                Orden {orderId ?? '—'} • Máquina {order?.maquinaId ?? '—'} • Fallo {tipoFallo} •{' '}
+                {orderEstado.replace('_', ' ')}
+              </p> */}
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {canRespond && (
+                <p className="text-sm font-medium text-warning">Pendiente de respuesta</p>
               )}
-            </div>
-          </div>
-          <Button
-            variant="secondary"
-            fullWidth
-            disabled={!orderId || selectedSourceIds.length === 0 || isRegenerating}
-            onClick={handleRegenerate}
+              {ragEstado === 'aceptado' && !isFinalized && (
+                <p className="text-sm font-medium text-success">Recomendaciones RAG aceptadas</p>
+              )}
+              {ragEstado === 'rechazado' && (
+                <p className="text-sm font-medium text-warning">
+                  Rechazado — análisis manual pendiente
+                </p>
+              )}
+              {isFinalized && (
+                <p className="text-sm font-medium text-success">Orden finalizada</p>
+              )}
+
+              {canRespond && (
+                <>
+                  <button
+                    type="button"
+                    disabled={busy || !orderId}
+                    onClick={() => setConfirmAcceptOpen(true)}
+                    className="flex w-full flex-col items-center rounded-lg bg-success px-4 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-success/90 disabled:opacity-50"
+                  >
+                    <span>Aceptar recomendaciones RAG</span>
+                  </button>
+
+                  <div className="space-y-2">
+                    <label className="text-xs text-ink-muted" htmlFor="reject-comment">
+                      Comentario (rechazo o análisis manual)
+                    </label>
+                    <textarea
+                      id="reject-comment"
+                      rows={3}
+                      value={rejectComment}
+                      onChange={(e) => setRejectComment(e.target.value)}
+                      placeholder="Indica por qué rechazas o qué revisarás manualmente…"
+                      className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                    />
+                    <Button
+                      variant="secondary"
+                      fullWidth
+                      disabled={busy || !orderId}
+                      onClick={handleReject}
+                    >
+                      <span className="flex flex-col items-center gap-0.5">
+                        <span>Rechazar / Analizar manualmente</span>
+                      </span>
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              {!canRespond && !isFinalized && ragEstado === 'rechazado' && (
+                <p className="text-xs text-ink-muted">
+                  El técnico rechazó el plan. La orden permanece pendiente hasta nueva decisión.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* <Card>
+            <CardHeader>
+              <CardTitle>Registrar Solución Aplicada</CardTitle>
+              <p className="text-xs text-ink-muted">Completa cuando la intervención finalice</p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {isFinalized ? (
+                <div className="space-y-2 rounded-md border border-border-soft bg-surface-2 p-3 text-sm">
+                  <p className="text-xs text-ink-muted">Tipo de solución</p>
+                  <p className="font-medium text-ink">
+                    {order?.solucionTipo === SolucionTipo.PROPIA
+                      ? 'Solución propia'
+                      : order?.solucionTipo === SolucionTipo.RECHAZADA_MANUAL
+                        ? 'Rechazada / manual'
+                        : 'Con recomendaciones RAG'}
+                  </p>
+                  <p className="mt-2 text-xs text-ink-muted">Descripción</p>
+                  <p className="text-ink-soft">{order?.solucionDescripcion ?? '—'}</p>
+                </div>
+              ) : canRegisterSolution ? (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-xs text-ink-muted" htmlFor="solution-desc">
+                      Descripción de la solución
+                    </label>
+                    <textarea
+                      id="solution-desc"
+                      rows={4}
+                      value={solutionText}
+                      onChange={(e) => setSolutionText(e.target.value)}
+                      placeholder="Ej: Se limpió el sistema de refrigeración…"
+                      className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs text-ink-muted">Solución usada:</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSolutionTipo(SolucionTipo.CON_RAG)}
+                        className={cn(
+                          'rounded-md border px-3 py-2 text-xs font-semibold transition-colors',
+                          solutionTipo === SolucionTipo.CON_RAG
+                            ? 'border-accent bg-accent/10 text-accent'
+                            : 'border-border bg-surface-2 text-ink-muted hover:text-ink',
+                        )}
+                      >
+                        Con recomendaciones RAG
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSolutionTipo(SolucionTipo.PROPIA)}
+                        className={cn(
+                          'rounded-md border px-3 py-2 text-xs font-semibold transition-colors',
+                          solutionTipo === SolucionTipo.PROPIA
+                            ? 'border-accent bg-accent/10 text-accent'
+                            : 'border-border bg-surface-2 text-ink-muted hover:text-ink',
+                        )}
+                      >
+                        Solución propia
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={busy || !orderId || !solutionText.trim()}
+                    onClick={handleRegisterSolution}
+                    className="flex w-full flex-col items-center rounded-lg bg-success px-4 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-success/90 disabled:opacity-50"
+                  >
+                    <span>Registrar y Finalizar Orden</span>
+                    <span className="mt-1 text-[11px] font-normal opacity-90">
+                      → Estado: Finalizado
+                    </span>
+                  </button>
+                </>
+              ) : (
+                <p className="text-sm text-ink-muted">
+                  Acepta las recomendaciones RAG para habilitar el registro de solución.
+                </p>
+              )}
+            </CardContent>
+          </Card> */}
+
+          {/* Fuentes RAG configurables — oculto por ahora (no está en diseño Figma actual)
+          <Card>
+            <CardHeader>
+              <CardTitle>Fuentes RAG</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="rounded-md border border-border-soft bg-surface-2 p-3">
+                <p className="text-sm font-semibold text-ink">Fuentes RAG disponibles</p>
+                <p className="mt-1 text-xs text-ink-muted">
+                  Selecciona las fuentes que el LLM puede usar al regenerar el plan.
+                </p>
+                <div className="mt-3 space-y-2">
+                  {activeSources.map((source) => (
+                    <label key={source.id} className="flex items-start gap-2 text-xs text-ink-soft">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 accent-accent"
+                        checked={selectedSourceIds.includes(source.id)}
+                        onChange={() => toggleSource(source.id)}
+                      />
+                      <span>
+                        <span className="font-semibold text-ink">{source.fuente}</span>
+                        {source.descripcion ? ` · ${source.descripcion}` : ''}
+                      </span>
+                    </label>
+                  ))}
+                  {!sources.isLoading && activeSources.length === 0 && (
+                    <p className="text-xs text-ink-muted">No hay fuentes activas configuradas.</p>
+                  )}
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                fullWidth
+                disabled={!orderId || selectedSourceIds.length === 0 || isRegenerating}
+                onClick={handleRegenerate}
+              >
+                {isRegenerating ? 'Regenerando...' : 'Regenerar con fuentes'}
+              </Button>
+              {regenerateError && <p className="text-xs text-danger">{regenerateError}</p>}
+            </CardContent>
+          </Card>
+          */}
+        </div>
+      </div>
+
+      {actionError && <p className="text-sm text-danger">{actionError}</p>}
+
+      {confirmAcceptOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          role="presentation"
+          onClick={() => !busy && setConfirmAcceptOpen(false)}
+        >
+          <Card
+            className="w-full max-w-md shadow-pop"
+            onClick={(e) => e.stopPropagation()}
           >
-            {isRegenerating ? 'Regenerando...' : 'Regenerar con fuentes'}
-          </Button>
-          {regenerateError && <p className="text-xs text-danger">{regenerateError}</p>}
-          <Button fullWidth>Confirmar acción</Button>
-          <Button variant="secondary" fullWidth>
-            Rechazar / Analizar manualmente
-          </Button>
-          {orderId && <p className="text-xs text-ink-muted">Orden: {orderId}</p>}
-        </CardContent>
-      </Card>
+            <CardHeader>
+              <CardTitle>Confirmar acción</CardTitle>
+              <p className="text-xs text-ink-muted">
+                Orden {orderId} • Máquina {order?.maquinaId} • Fallo {tipoFallo}
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-ink-soft">
+                ¿Aceptas las recomendaciones RAG? La orden pasará automáticamente a{' '}
+                <strong className="text-ink">En Progreso</strong>. Recibirás notificación de
+                seguimiento en 30 minutos.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={handleAccept}
+                  className="flex-1 rounded-md bg-success px-4 py-2.5 text-sm font-semibold text-white hover:bg-success/90 disabled:opacity-50"
+                >
+                  Confirmar
+                </button>
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  disabled={busy}
+                  onClick={() => setConfirmAcceptOpen(false)}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
 
-function ragPriorityVariant(prioridad: string): 'critical' | 'high' | 'medium' | 'default' {
+function formatRagPriority(prioridad: string): string {
+  switch (prioridad?.toUpperCase()) {
+    case 'CRITICO':
+      return 'critico';
+    case 'MEDIO':
+      return 'medio';
+    case 'BAJO':
+    case 'ALTO':
+      return 'bajo';
+    default:
+      return prioridad?.toLowerCase() ?? '—';
+  }
+}
+
+function ragPriorityVariant(prioridad: string): 'critical' | 'low' | 'medium' | 'default' {
   switch (prioridad?.toUpperCase()) {
     case 'CRITICO':
       return 'critical';
+    case 'BAJO':
     case 'ALTO':
-      return 'high';
+      return 'low';
     case 'MEDIO':
       return 'medium';
     default:

@@ -38,8 +38,9 @@ export function DashboardView() {
   const machineList = machines.data ?? [];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-h-full flex-col">
       <Topbar
+        flush
         title="Dashboard General"
         subtitle={`${formatDate()} | Turno Mañana`}
         badge={
@@ -49,6 +50,7 @@ export function DashboardView() {
         }
       />
 
+      <div className="flex flex-col gap-6 px-6 pb-6 pt-5">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           tone="accent"
@@ -103,6 +105,7 @@ export function DashboardView() {
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

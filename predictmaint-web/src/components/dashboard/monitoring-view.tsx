@@ -160,8 +160,9 @@ export function MonitoringView() {
   const loading = machines.isLoading || alerts.isLoading;
 
   return (
-    <div className="flex flex-col gap-6 pb-20">
+    <div className="flex min-h-full flex-col pb-20">
       <Topbar
+        flush
         title="Monitoreo en Tiempo Real"
         subtitle="Lectura por evento de sensor · S-1 y S-2 automáticos · Asignación tras confirmar tipo de fallo"
         right={
@@ -181,6 +182,7 @@ export function MonitoringView() {
         }
       />
 
+      <div className="flex flex-col gap-6 px-6 pt-5">
       <p className="rounded-lg border border-border-soft bg-surface px-4 py-3 text-sm text-ink-soft">
         Hoy (desde 00:00):{' '}
         <strong className="text-ink">{pipelinesHoy}</strong> eventos S-1 en{' '}
@@ -347,6 +349,7 @@ export function MonitoringView() {
           </p>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -29,11 +29,11 @@ export function Sidebar() {
 
   return (
     <aside className="flex h-screen w-[220px] shrink-0 flex-col border-r border-border bg-bg-deep">
-      <div className="border-b border-border-soft p-5">
+      <div className="border-b border-border-soft px-4 py-4">
         <Logo />
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+      <nav className="friendly-scroll flex-1 overflow-y-auto">
         {NAV.map(({ href, label, icon: Icon }) => {
           const active =
             pathname === href ||
@@ -44,7 +44,7 @@ export function Sidebar() {
               key={href}
               href={href}
               className={cn(
-                'relative flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors',
+                'relative flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
                 active
                   ? 'bg-accent/10 font-semibold text-accent'
                   : 'text-ink-soft hover:bg-surface-2 hover:text-ink',
@@ -60,7 +60,7 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="border-t border-border-soft p-4">
+      <div className="border-t border-border-soft px-4 py-3">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/20 text-xs font-bold text-accent">
             {user?.email?.slice(0, 2).toUpperCase() ?? 'OP'}

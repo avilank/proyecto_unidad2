@@ -7,13 +7,15 @@ export interface TopbarProps {
   badge?: { label: string; variant?: 'danger' | 'warning' | 'accent' };
   right?: React.ReactNode;
   className?: string;
+  flush?: boolean;
 }
 
-export function Topbar({ title, subtitle, badge, right, className }: TopbarProps) {
+export function Topbar({ title, subtitle, badge, right, className, flush }: TopbarProps) {
   return (
     <header
       className={cn(
-        'flex flex-wrap items-start justify-between gap-4 border-b border-border-soft pb-6',
+        'flex flex-wrap items-start justify-between gap-4',
+        flush ? 'bg-bg px-6 py-4' : 'border-b border-border-soft bg-bg px-6 pb-6 pt-6',
         className,
       )}
     >

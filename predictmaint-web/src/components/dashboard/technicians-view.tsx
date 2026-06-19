@@ -43,8 +43,9 @@ export function TechniciansView() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-h-full flex-col">
       <Topbar
+        flush
         title="Gestión de Técnicos"
         subtitle="CRUD de técnicos · Máquinas asignadas se calculan desde órdenes activas"
         right={
@@ -54,6 +55,7 @@ export function TechniciansView() {
         }
       />
 
+      <div className="flex flex-col gap-4 px-6 pb-6 pt-5">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard icon={Users} value={stats.total} label="Total técnicos" tone="accent" />
         <KpiCard icon={Activity} value={stats.available} label="Disponibles ahora" tone="success" />
@@ -228,6 +230,7 @@ export function TechniciansView() {
           }}
         />
       )}
+      </div>
     </div>
   );
 }

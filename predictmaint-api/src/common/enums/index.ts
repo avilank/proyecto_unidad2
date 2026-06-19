@@ -118,7 +118,7 @@ export enum EstadoPlanRag {
 
 export enum PrioridadAccion {
   CRITICO = 'CRITICO',
-  ALTO = 'ALTO',
+  BAJO = 'BAJO',
   MEDIO = 'MEDIO',
 }
 

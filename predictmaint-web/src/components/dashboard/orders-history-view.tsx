@@ -129,12 +129,14 @@ export function OrdersHistoryView() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-h-full flex-col">
       <Topbar
+        flush
         title="Historial de Mantenimiento"
         subtitle="Solo órdenes con técnico asignado · paginado por fecha"
       />
 
+      <div className="flex flex-col gap-4 px-6 pb-6 pt-5">
       <Card>
         <CardContent className="flex flex-wrap items-end gap-3 py-3">
           <FilterSelect
@@ -286,6 +288,7 @@ export function OrdersHistoryView() {
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
