@@ -53,6 +53,14 @@ export class OrderService {
   escalate(orderId: string, motivo: string): Promise<OrderDetail> {
     return orderRepository.escalate(orderId, motivo);
   }
+
+  startOrder(orderId: string): Promise<OrderDetail> {
+    return orderRepository.startOrder(orderId);
+  }
+
+  getTechnicianBoard(): Promise<{ pendientes: Order[]; completadas: Order[] }> {
+    return orderRepository.getTechnicianBoard();
+  }
 }
 
 export const orderService = new OrderService();

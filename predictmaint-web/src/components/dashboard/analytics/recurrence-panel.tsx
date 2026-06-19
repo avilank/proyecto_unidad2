@@ -8,11 +8,13 @@ import { recurrenceSeverity } from '@/lib/utils/analytics';
 export function RecurrencePanel({
   data,
   isLoading,
-  ventanaDias = 30,
+  ventanaDias = 7,
+  minFallos = 2,
 }: {
   data?: MachineRecurrence[];
   isLoading?: boolean;
   ventanaDias?: number;
+  minFallos?: number;
 }) {
   const rows = data ?? [];
   const max = Math.max(...rows.map((d) => d.fallos), 1);
@@ -22,7 +24,9 @@ export function RecurrencePanel({
       <CardHeader>
         <div>
           <CardTitle>Máquinas con más fallos recurrentes</CardTitle>
-          <p className="mt-1 text-xs text-ink-muted">Últimos {ventanaDias} días</p>
+          <p className="mt-1 text-xs text-ink-muted">
+            Esta semana · solo máquinas con {minFallos} o más fallos confirmados
+          </p>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -30,7 +34,7 @@ export function RecurrencePanel({
           <Skeleton className="h-40 w-full" />
         ) : rows.length === 0 ? (
           <p className="py-8 text-center text-sm text-ink-muted">
-            Sin máquinas con fallos recurrentes
+            Ninguna máquina alcanzó {minFallos} fallos en los últimos {ventanaDias} días
           </p>
         ) : (
           rows.map((item) => {

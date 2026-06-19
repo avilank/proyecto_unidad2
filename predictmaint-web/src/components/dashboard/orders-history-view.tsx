@@ -16,7 +16,7 @@ import { useMachines } from '@/presentation/hooks/useMachines';
 import { orderService } from '@/application/services/order.service';
 import type { OrderQuery } from '@/infrastructure/repositories/order.repository';
 import type { Order } from '@/core/entities';
-import { EstadoOrden, TipoFallo } from '@/core/types';
+import { EstadoOrden, SolucionTipo, TipoFallo } from '@/core/types';
 import { ClipboardList, Clock3, FileCheck2 } from 'lucide-react';
 
 const ESTADOS = Object.values(EstadoOrden);
@@ -94,6 +94,10 @@ export function OrdersHistoryView() {
         'Algoritmo',
         'Confianza',
         'Detectado',
+        'Inicio',
+        'Término',
+        'Duración',
+        'Tipo solución',
         'Estado',
       ];
       const rows = all.map((r) => [
@@ -104,6 +108,10 @@ export function OrdersHistoryView() {
         r.algoritmoClasificador ?? '',
         confianzaS1Value(r)?.toFixed(1) ?? '',
         r.detectadoEn,
+        r.iniciadoEn ?? '',
+        r.finalizadoEn ?? '',
+        formatOrderDuration(r) ?? '',
+        formatTipoSolucion(r.solucionTipo),
         r.estado,
       ]);
       const csv = [header, ...rows]
@@ -239,12 +247,8 @@ export function OrdersHistoryView() {
                   },
                   {
                     key: 'sol',
-                    header: 'Solución',
-                    render: (r) =>
-                      r.solucionDescripcion
-                        ? r.solucionDescripcion.slice(0, 40) +
-                          (r.solucionDescripcion.length > 40 ? '…' : '')
-                        : '—',
+                    header: 'Tipo solución',
+                    render: (r) => formatTipoSolucion(r.solucionTipo),
                   },
                   {
                     key: 'det',
@@ -256,6 +260,45 @@ export function OrdersHistoryView() {
                         hour: '2-digit',
                         minute: '2-digit',
                       }),
+                  },
+                  {
+                    key: 'inicio',
+                    header: 'Inicio',
+                    render: (r) =>
+                      r.iniciadoEn
+                        ? new Date(r.iniciadoEn).toLocaleString('es-PE', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : '—',
+                  },
+                  {
+                    key: 'termino',
+                    header: 'Término',
+                    render: (r) =>
+                      r.finalizadoEn
+                        ? new Date(r.finalizadoEn).toLocaleString('es-PE', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : '—',
+                  },
+                  {
+                    key: 'duracion',
+                    header: 'Duración',
+                    render: (r) => {
+                      const d = formatOrderDuration(r);
+                      if (!d) return '—';
+                      return r.estado === EstadoOrden.EN_PROGRESO ? (
+                        <span title="Tiempo transcurrido desde el inicio">{d}</span>
+                      ) : (
+                        d
+                      );
+                    },
                   },
                   {
                     key: 'estado',
@@ -335,6 +378,43 @@ function confianzaS1Value(
 function formatConfianzaS1(r: Pick<Order, 'confianzaPrediccion' | 'confianzaLider' | 'ensembleAvg'>) {
   const value = confianzaS1Value(r);
   return value != null ? `${value.toFixed(1)}%` : '—';
+}
+
+function formatTipoSolucion(tipo?: SolucionTipo | string | null): string {
+  switch (tipo) {
+    case SolucionTipo.CON_RAG:
+    case 'con_rag':
+      return 'RAG';
+    case SolucionTipo.PROPIA:
+    case 'propia':
+      return 'Propia';
+    default:
+      return '—';
+  }
+}
+
+function formatOrderDuration(
+  r: Pick<Order, 'iniciadoEn' | 'finalizadoEn' | 'estado'>,
+): string | null {
+  if (!r.iniciadoEn) return null;
+  const start = new Date(r.iniciadoEn).getTime();
+  const end = r.finalizadoEn
+    ? new Date(r.finalizadoEn).getTime()
+    : r.estado === EstadoOrden.EN_PROGRESO
+      ? Date.now()
+      : null;
+  if (end == null || end < start) return null;
+  return formatDurationMs(end - start, !r.finalizadoEn);
+}
+
+function formatDurationMs(ms: number, inProgress = false): string {
+  const totalMinutes = Math.floor(ms / 60_000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const suffix = inProgress ? ' (en curso)' : '';
+  if (hours > 0) return `${hours}h ${minutes}m${suffix}`;
+  if (minutes > 0) return `${minutes} min${suffix}`;
+  return `< 1 min${suffix}`;
 }
 
 function buildMonthOptions() {

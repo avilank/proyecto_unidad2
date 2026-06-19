@@ -1,12 +1,13 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op } from 'sequelize';
-import { EstadoOrden, EstadoAlerta } from '../common/enums';
+import { EstadoOrden, EstadoAlerta, RolUsuario } from '../common/enums';
 import { paginate, PaginationQueryDto } from '../common/dto/pagination.dto';
 import { generateOrderCodigo } from '../common/utils/id-generator.util';
 import { findMaquinaByCodigo } from '../common/utils/maquina.util';
@@ -34,6 +35,7 @@ import {
   RegisterSolutionDto,
   UpdateOrderStatusDto,
 } from './dto/order.dto';
+import type { AuthUserPayload } from '../auth/auth.service';
 
 const VALID_TRANSITIONS: Record<EstadoOrden, EstadoOrden[]> = {
   [EstadoOrden.PENDIENTE]: [EstadoOrden.EN_PROGRESO],
@@ -98,6 +100,36 @@ export class OrdersService {
     private readonly techniciansService: TechniciansService,
   ) {}
 
+  private isElevatedRole(user?: AuthUserPayload): boolean {
+    return (
+      user?.rol === RolUsuario.SUPERVISOR || user?.rol === RolUsuario.JEFE_PLANTA
+    );
+  }
+
+  private isTechnicianRole(user?: AuthUserPayload): boolean {
+    return (
+      user?.rol === RolUsuario.TECNICO || user?.rol === RolUsuario.TECNICO_SENIOR
+    );
+  }
+
+  private assertCanAccessOrder(order: Orden, user?: AuthUserPayload): void {
+    if (!user || this.isElevatedRole(user)) return;
+    if (this.isTechnicianRole(user)) {
+      if (!user.tecnicoId || order.idTecnico !== user.tecnicoId) {
+        throw new ForbiddenException('No tienes acceso a esta orden');
+      }
+    }
+  }
+
+  private applyRoleScope(
+    where: Record<string, unknown>,
+    user?: AuthUserPayload,
+  ): void {
+    if (user && this.isTechnicianRole(user) && user.tecnicoId) {
+      where.idTecnico = user.tecnicoId;
+    }
+  }
+
   private async syncAlertEstadoForOrder(idOrden: number, estado: EstadoAlerta) {
     await this.alertaModel.update(
       { estado },
@@ -160,6 +192,7 @@ export class OrdersService {
           }
         : null,
       detectadoEn: o.fechaCreacion,
+      iniciadoEn: o.fechaInicio ?? null,
       finalizadoEn: o.fechaFin ?? null,
       proximoReintentoAsignacion: o.proximoReintentoAsignacion?.toISOString() ?? null,
       intentosAsignacion: o.intentosAsignacion ?? 0,
@@ -246,10 +279,12 @@ export class OrdersService {
       search?: string;
       conTecnico?: boolean | string;
     },
+    user?: AuthUserPayload,
   ) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const where = this.buildWhere(query);
+    this.applyRoleScope(where, user);
     await this.resolveMaquinaFilter(where, query.maquinaId);
 
     const includes = buildOrderIncludes(query.tipoFallo);
@@ -284,13 +319,56 @@ export class OrdersService {
     };
   }
 
-  async findOne(codigo: string) {
+  async findOne(codigo: string, user?: AuthUserPayload) {
     const o = await this.findOrderByCodigo(codigo);
+    this.assertCanAccessOrder(o, user);
     return this.toResponse(o);
   }
 
-  async getTimeline(codigo: string) {
+  async getTechnicianBoard(user: AuthUserPayload) {
+    if (!this.isTechnicianRole(user) || !user.tecnicoId) {
+      throw new ForbiddenException('Solo técnicos pueden acceder al tablero');
+    }
+    const [pendientesRows, completadasRows] = await Promise.all([
+      this.ordenModel.findAll({
+        where: {
+          idTecnico: user.tecnicoId,
+          estado: { [Op.in]: [EstadoOrden.PENDIENTE, EstadoOrden.EN_PROGRESO] },
+        },
+        include: ORDER_INCLUDES_BASE,
+        order: [['fechaCreacion', 'DESC']],
+      }),
+      this.ordenModel.findAll({
+        where: {
+          idTecnico: user.tecnicoId,
+          estado: EstadoOrden.FINALIZADO,
+        },
+        include: ORDER_INCLUDES_BASE,
+        order: [['fechaFin', 'DESC']],
+        limit: 30,
+      }),
+    ]);
+    return {
+      pendientes: pendientesRows.map((o) => this.toResponse(o)),
+      completadas: completadasRows.map((o) => this.toResponse(o)),
+    };
+  }
+
+  async startOrder(codigo: string, user?: AuthUserPayload) {
     const o = await this.findOrderByCodigo(codigo);
+    this.assertCanAccessOrder(o, user);
+    if (o.estado !== EstadoOrden.PENDIENTE) {
+      throw new ConflictException('La orden ya fue iniciada o finalizada');
+    }
+    if (!o.idTecnico) {
+      throw new BadRequestException('La orden no tiene técnico asignado');
+    }
+    return this.updateStatus(codigo, { estado: EstadoOrden.EN_PROGRESO }, user, 'tecnico');
+  }
+
+  async getTimeline(codigo: string, user?: AuthUserPayload) {
+    const o = await this.findOrderByCodigo(codigo);
+    this.assertCanAccessOrder(o, user);
     const eventos = await this.eventoModel.findAll({
       where: { idOrden: o.idOrden },
       order: [['fechaEvento', 'ASC']],
@@ -335,8 +413,14 @@ export class OrdersService {
     return this.findOne(codigo);
   }
 
-  async updateStatus(codigo: string, dto: UpdateOrderStatusDto) {
+  async updateStatus(
+    codigo: string,
+    dto: UpdateOrderStatusDto,
+    user?: AuthUserPayload,
+    actor = 'usuario',
+  ) {
     const o = await this.findOrderByCodigo(codigo);
+    this.assertCanAccessOrder(o, user);
     const allowed = VALID_TRANSITIONS[o.estado as EstadoOrden];
     if (!allowed.includes(dto.estado)) {
       throw new ConflictException(
@@ -345,7 +429,7 @@ export class OrdersService {
     }
     await o.update({
       estado: dto.estado,
-      ...(dto.estado === EstadoOrden.EN_PROGRESO && { fechaInicio: new Date() }),
+      ...(dto.estado === EstadoOrden.EN_PROGRESO && !o.fechaInicio && { fechaInicio: new Date() }),
       ...(dto.estado === EstadoOrden.FINALIZADO && { fechaFin: new Date() }),
     });
     if (dto.estado === EstadoOrden.EN_PROGRESO) {
@@ -358,19 +442,28 @@ export class OrdersService {
       idOrden: o.idOrden,
       etapa: dto.estado === EstadoOrden.EN_PROGRESO ? 'en_progreso' : 'finalizado',
       descripcion: `Estado → ${dto.estado}`,
-      actor: 'usuario',
+      actor,
       fechaEvento: new Date(),
     });
     if (dto.estado === EstadoOrden.FINALIZADO && o.idTecnico) {
       await this.techniciansService.releaseIfIdle(o.idTecnico);
     }
-    return this.findOne(codigo);
+    return this.findOne(codigo, user);
   }
 
-  async registerSolution(codigo: string, dto: RegisterSolutionDto) {
+  async registerSolution(codigo: string, dto: RegisterSolutionDto, user?: AuthUserPayload) {
     const o = await this.findOrderByCodigo(codigo);
+    this.assertCanAccessOrder(o, user);
     if (o.estado === EstadoOrden.FINALIZADO) {
       throw new ConflictException('La orden ya está finalizada');
+    }
+    if (
+      this.isTechnicianRole(user) &&
+      o.estado === EstadoOrden.PENDIENTE
+    ) {
+      throw new BadRequestException(
+        'Debe iniciar la orden antes de registrar la solución',
+      );
     }
 
     const liderS2 = o.analisis?.clasificaciones?.find((c) => c.esLider);
@@ -396,6 +489,7 @@ export class OrdersService {
     await o.update({
       estado: EstadoOrden.FINALIZADO,
       fechaFin: new Date(),
+      ...(!o.fechaInicio && { fechaInicio: new Date() }),
       ...(dto.comentario?.trim()
         ? { observaciones: dto.comentario.trim() }
         : { observaciones: dto.descripcion }),
@@ -411,11 +505,12 @@ export class OrdersService {
     if (o.idTecnico) {
       await this.techniciansService.releaseIfIdle(o.idTecnico);
     }
-    return this.findOne(codigo);
+    return this.findOne(codigo, user);
   }
 
-  async escalate(codigo: string, dto: EscalateOrderDto) {
+  async escalate(codigo: string, dto: EscalateOrderDto, user?: AuthUserPayload) {
     const o = await this.findOrderByCodigo(codigo);
+    this.assertCanAccessOrder(o, user);
     await this.eventoModel.create({
       idOrden: o.idOrden,
       etapa: 'escalado',
@@ -423,6 +518,6 @@ export class OrdersService {
       actor: 'sistema',
       fechaEvento: new Date(),
     });
-    return this.findOne(codigo);
+    return this.findOne(codigo, user);
   }
 }

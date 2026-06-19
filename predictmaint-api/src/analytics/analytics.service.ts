@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op } from 'sequelize';
-import { EstadoOrden, NivelRiesgo, PrediccionBinaria } from '../common/enums';
+import { EstadoOrden, NivelRiesgo, PrediccionBinaria, SolucionTipo } from '../common/enums';
 import { Alerta } from '../database/models/alerta.model';
 import { AnalisisFallo } from '../database/models/analisis-fallo.model';
 import { ClasificacionFallo } from '../database/models/clasificacion-fallo.model';
@@ -9,6 +9,7 @@ import { LecturaSensor } from '../database/models/lectura-sensor.model';
 import { Maquina } from '../database/models/maquina.model';
 import { ModeloMl } from '../database/models/modelo-ml.model';
 import { Orden } from '../database/models/orden.model';
+import { SolucionAplicada } from '../database/models/solucion-aplicada.model';
 import { PrediccionFallo } from '../database/models/prediccion-fallo.model';
 import { RespuestaRecomendacion } from '../database/models/respuesta-recomendacion.model';
 import { Tecnico } from '../database/models/tecnico.model';
@@ -22,6 +23,15 @@ function tecnicoNombreCorto(nombre: string): string {
   const parts = nombre.trim().split(/\s+/).filter(Boolean);
   if (parts.length < 2) return nombre;
   return `${parts[0][0]}. ${parts[parts.length - 1]}`;
+}
+
+function latestSolutionType(orden: Orden): string | null {
+  const soluciones = orden.soluciones ?? [];
+  if (!soluciones.length) return null;
+  const latest = [...soluciones].sort(
+    (a, b) => b.fechaRegistro.getTime() - a.fechaRegistro.getTime(),
+  )[0];
+  return latest.tipoSolucion ?? null;
 }
 
 @Injectable()
@@ -180,32 +190,30 @@ export class AnalyticsService {
     const from = this.rangeStart(range);
     const ordenes = await this.ordenModel.findAll({
       where: { fechaCreacion: { [Op.gte]: from } },
+      include: [{ model: SolucionAplicada, required: false }],
     });
-    const orderIds = ordenes.map((o) => o.idOrden);
-    const respuestas = orderIds.length
-      ? await RespuestaRecomendacion.findAll({
-          where: { idOrden: orderIds, decision: 'aceptado' },
-        })
-      : [];
-    const conRag = respuestas.length;
-    const respondedOrderIds = new Set(
-      (
-        orderIds.length
-          ? await RespuestaRecomendacion.findAll({
-              where: { idOrden: orderIds },
-              attributes: ['idOrden'],
-            })
-          : []
-      ).map((r) => r.idOrden),
-    );
-    const sinAtender = ordenes.filter(
-      (o) => o.estado === EstadoOrden.PENDIENTE && !respondedOrderIds.has(o.idOrden),
-    ).length;
+
+    let conRag = 0;
+    let sinRag = 0;
+    let sinAtender = 0;
+
+    for (const o of ordenes) {
+      if (o.estado !== EstadoOrden.FINALIZADO) {
+        sinAtender += 1;
+        continue;
+      }
+      const tipo = latestSolutionType(o);
+      if (tipo === SolucionTipo.CON_RAG) {
+        conRag += 1;
+      } else {
+        sinRag += 1;
+      }
+    }
 
     return {
       totalAlertas: ordenes.length,
       conRag,
-      sinRag: ordenes.length - conRag,
+      sinRag,
       pctConRag: ordenes.length ? Math.round((conRag / ordenes.length) * 100) : 0,
       sinAtender,
       range,
@@ -293,7 +301,7 @@ export class AnalyticsService {
       });
   }
 
-  async getMachineRecurrence(days = 30) {
+  async getMachineRecurrence(days = 7, minFallos = 2) {
     const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     const ordenes = await this.ordenModel.findAll({
       where: { fechaCreacion: { [Op.gte]: from } },
@@ -315,6 +323,7 @@ export class AnalyticsService {
     }
 
     return [...counts.entries()]
+      .filter(([, fallos]) => fallos >= minFallos)
       .map(([maquinaId, fallos]) => ({ maquinaId, fallos, ventanaDias: days }))
       .sort((a, b) => b.fallos - a.fallos)
       .slice(0, 10);

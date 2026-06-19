@@ -40,8 +40,14 @@ export class AnalyticsController {
 
   @Get('machine-recurrence')
   @ApiOperation({ summary: 'Ranking de máquinas por fallos en ventana temporal' })
-  getMachineRecurrence(@Query('days') days = '30') {
-    return this.analyticsService.getMachineRecurrence(Number(days));
+  getMachineRecurrence(
+    @Query('days') days = '7',
+    @Query('minFallos') minFallos = '2',
+  ) {
+    return this.analyticsService.getMachineRecurrence(
+      Number(days),
+      Number(minFallos),
+    );
   }
 
   @Get('sensor-trend')

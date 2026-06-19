@@ -24,3 +24,7 @@ export function useOrderTimeline(id: string | null) {
   );
 }
 
+export function useTechnicianBoard() {
+  return useSWR('/orders/my-board', () => orderService.getTechnicianBoard());
+}
+

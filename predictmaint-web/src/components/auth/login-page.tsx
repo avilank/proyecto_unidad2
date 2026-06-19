@@ -10,6 +10,7 @@ import { useSessionStore } from '@/presentation/stores/sessionStore';
 import { Logo } from '@/components/common/logo';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { RolUsuario } from '@/core/types';
 
 export function LoginPage() {
   const router = useRouter();
@@ -38,7 +39,10 @@ export function LoginPage() {
         activo: true,
         creadoEn: new Date().toISOString(),
       });
-      router.push('/dashboard');
+      const isTechnician =
+        response.user.rol === RolUsuario.TECNICO ||
+        response.user.rol === RolUsuario.TECNICO_SENIOR;
+      router.push(isTechnician ? '/dashboard/my-work' : '/dashboard');
     } catch {
       setSubmitError('Credenciales inválidas. Verifica email y contraseña.');
     }

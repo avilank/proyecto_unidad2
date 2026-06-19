@@ -22,8 +22,8 @@ export class AnalyticsService {
     return analyticsRepository.getRepetitiveFaults();
   }
 
-  getMachineRecurrence(days = 30): Promise<MachineRecurrence[]> {
-    return analyticsRepository.getMachineRecurrence(days);
+  getMachineRecurrence(days = 7, minFallos = 2): Promise<MachineRecurrence[]> {
+    return analyticsRepository.getMachineRecurrence(days, minFallos);
   }
 
   getUnattendedOrders() {

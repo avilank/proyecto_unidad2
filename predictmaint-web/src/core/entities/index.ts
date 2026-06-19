@@ -131,6 +131,7 @@ export interface Order {
     fechaRegistro: string;
   } | null;
   detectadoEn: string;
+  iniciadoEn: string | null;
   finalizadoEn: string | null;
   proximoReintentoAsignacion?: string | null;
   intentosAsignacion?: number;

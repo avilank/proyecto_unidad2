@@ -19,7 +19,7 @@ export function AnalyticsView() {
   const summary = useAnalyticsSummary('week');
   const unattended = useUnattendedOrders();
   const faults = useFaultsByType('week');
-  const recurrence = useMachineRecurrence(30);
+  const recurrence = useMachineRecurrence(7, 2);
   const notificationLog = useNotificationLog(50);
 
   const logs = notificationLog.data?.items;
@@ -33,11 +33,7 @@ export function AnalyticsView() {
       />
 
       <div className="flex flex-1 flex-col gap-6 px-6 py-6">
-        <AnalyticsKpiRow
-          summary={summary.data}
-          logs={logs}
-          isLoading={summary.isLoading || notificationLog.isLoading}
-        />
+        <AnalyticsKpiRow summary={summary.data} isLoading={summary.isLoading} />
 
         <div className="grid gap-4 lg:grid-cols-2">
           <UnattendedPanel
@@ -50,7 +46,7 @@ export function AnalyticsView() {
 
         <div className="grid gap-4 lg:grid-cols-2">
           <RagEffectivenessPanel summary={summary.data} isLoading={summary.isLoading} />
-          <RecurrencePanel data={recurrence.data} isLoading={recurrence.isLoading} />
+          <RecurrencePanel data={recurrence.data} isLoading={recurrence.isLoading} ventanaDias={7} minFallos={2} />
         </div>
 
         <CsvLogTable items={logs} isLoading={notificationLog.isLoading} />

@@ -35,9 +35,9 @@ export function useUnattendedOrders() {
   });
 }
 
-export function useMachineRecurrence(days = 30) {
-  return useSWR(['/analytics/machine-recurrence', days], () =>
-    analyticsService.getMachineRecurrence(days),
+export function useMachineRecurrence(days = 7, minFallos = 2) {
+  return useSWR(['/analytics/machine-recurrence', days, minFallos], () =>
+    analyticsService.getMachineRecurrence(days, minFallos),
   );
 }
 

@@ -1,7 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op } from 'sequelize';
-import { EstadoOrden, EstadoAlerta } from '../common/enums';
 import { findMaquinaByCodigo } from '../common/utils/maquina.util';
 import { resolveModeloId } from '../common/utils/modelo-ml.util';
 import { tecnicoNombre } from '../common/utils/tecnico-display.util';
@@ -114,25 +113,13 @@ export class RagService {
       decision: 'aceptado',
       fechaRespuesta: new Date(),
     });
-    if (orden.estado === EstadoOrden.PENDIENTE) {
-      await orden.update({ estado: EstadoOrden.EN_PROGRESO, fechaInicio: new Date() });
-      await this.alertaModel.update(
-        { estado: EstadoAlerta.EN_PROGRESO },
-        {
-          where: {
-            idOrden: orden.idOrden,
-            estado: { [Op.ne]: EstadoAlerta.FINALIZADO },
-          },
-        },
-      );
-      await this.eventoModel.create({
-        idOrden: orden.idOrden,
-        etapa: 'en_progreso',
-        descripcion: 'Plan RAG aceptado',
-        actor: 'tecnico',
-        fechaEvento: new Date(),
-      });
-    }
+    await this.eventoModel.create({
+      idOrden: orden.idOrden,
+      etapa: 'rag_aceptado',
+      descripcion: 'Plan RAG aceptado',
+      actor: 'tecnico',
+      fechaEvento: new Date(),
+    });
     return this.toPlanResponse(orderCodigo);
   }
 

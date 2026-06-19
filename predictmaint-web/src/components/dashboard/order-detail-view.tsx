@@ -11,11 +11,19 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useOrder, useOrderTimeline } from '@/presentation/hooks/useOrders';
 import { useRagPlan } from '@/presentation/hooks/useRag';
 import { orderService } from '@/application/services/order.service';
-import { EstadoOrden, SolucionTipo } from '@/core/types';
+import { ragService } from '@/application/services/rag.service';
+import { useSessionStore } from '@/presentation/stores/sessionStore';
+import { EstadoOrden, RolUsuario, SolucionTipo } from '@/core/types';
 import { cn } from '@/lib/utils/cn';
+
+function isTechnicianRole(rol?: RolUsuario) {
+  return rol === RolUsuario.TECNICO || rol === RolUsuario.TECNICO_SENIOR;
+}
 
 export function OrderDetailView({ orderId }: { orderId: string }) {
   const router = useRouter();
+  const user = useSessionStore((s) => s.user);
+  const isTechnician = isTechnicianRole(user?.rol);
   const order = useOrder(orderId);
   const timeline = useOrderTimeline(orderId);
   const rag = useRagPlan(orderId);
@@ -29,12 +37,16 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
 
   const data = order.data;
   const isFinalized = data?.estado === EstadoOrden.FINALIZADO;
-  const canRegister =
-    data?.estado === EstadoOrden.EN_PROGRESO || data?.estado === EstadoOrden.PENDIENTE;
+  const isPending = data?.estado === EstadoOrden.PENDIENTE;
+  const isInProgress = data?.estado === EstadoOrden.EN_PROGRESO;
+  const canRegister = isInProgress || (!isTechnician && isPending);
+  const backHref = isTechnician ? '/dashboard/my-work' : '/dashboard/orders';
+  const backLabel = isTechnician ? '← Mi trabajo' : '← Historial';
 
   const refresh = () => {
     order.mutate();
     timeline.mutate();
+    rag.mutate();
   };
 
   const runAction = async (fn: () => Promise<unknown>) => {
@@ -49,6 +61,29 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
     }
   };
 
+  const handleStart = () => runAction(() => orderService.startOrder(orderId));
+
+  const buildRagSolutionText = () => {
+    const acciones = rag.data?.acciones ?? [];
+    if (!acciones.length) return 'Intervención según plan RAG (sin acciones detalladas)';
+    return acciones.map((a) => `${a.orden}. ${a.titulo}`).join('; ');
+  };
+
+  const handleAcceptRagAndFinish = () =>
+    runAction(async () => {
+      await ragService.accept(orderId);
+      await orderService.registerSolution(orderId, {
+        descripcion: buildRagSolutionText(),
+        solucionTipo: SolucionTipo.CON_RAG,
+        comentario: observaciones.trim() || undefined,
+        esFalla,
+        esPrediccionCorrecta,
+        esClasificacionCorrecta,
+      });
+      setObservaciones('');
+      if (isTechnician) router.push('/dashboard/my-work');
+    });
+
   const handleRegisterSolution = () =>
     runAction(async () => {
       if (!solutionText.trim()) return;
@@ -62,6 +97,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
       });
       setSolutionText('');
       setObservaciones('');
+      if (isTechnician) router.push('/dashboard/my-work');
     });
 
   return (
@@ -71,8 +107,8 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
         title={`Orden ${orderId} — Detalle Completo`}
         subtitle={`${data?.maquinaId ?? '—'} · ${data?.tipoFallo ?? '—'} · ${data?.detectadoEn ? new Date(data.detectadoEn).toLocaleDateString('es-PE') : ''}`}
         right={
-          <Button variant="secondary" size="sm" onClick={() => router.push('/dashboard/orders')}>
-            ← Historial
+          <Button variant="secondary" size="sm" onClick={() => router.push(backHref)}>
+            {backLabel}
           </Button>
         }
       />
@@ -126,6 +162,22 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                 <div className="grid gap-2 rounded-md border border-border-soft bg-surface-2 p-3 text-sm md:grid-cols-2">
                   <Info label="Máquina" value={data?.maquinaId ?? '—'} />
                   <Info label="Estado" value={data?.estado?.replace('_', ' ') ?? '—'} />
+                  <Info
+                    label="Inicio"
+                    value={
+                      data?.iniciadoEn
+                        ? new Date(data.iniciadoEn).toLocaleString('es-PE')
+                        : '—'
+                    }
+                  />
+                  <Info
+                    label="Término"
+                    value={
+                      data?.finalizadoEn
+                        ? new Date(data.finalizadoEn).toLocaleString('es-PE')
+                        : '—'
+                    }
+                  />
                   <Info label="Técnico" value={data?.tecnico?.nombre ?? 'Sin asignar'} />
                   <Info
                     label="Confianza S-1"
@@ -215,6 +267,15 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                   <CardTitle>Registrar Solución Aplicada</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {isPending && isTechnician && (
+                    <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-ink-soft">
+                      Debes iniciar la orden para registrar tiempos y finalizar la intervención.
+                      <Button className="mt-3 w-full" disabled={busy} onClick={handleStart}>
+                        Iniciar orden
+                      </Button>
+                    </div>
+                  )}
+
                   {isFinalized ? (
                     <div className="space-y-3 rounded-md border border-border-soft bg-surface-2 p-3 text-sm">
                       <div>
@@ -234,6 +295,20 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                     </div>
                   ) : canRegister ? (
                     <>
+                      {isInProgress && (rag.data?.acciones?.length ?? 0) > 0 && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={handleAcceptRagAndFinish}
+                          className="flex w-full flex-col items-center rounded-lg bg-accent px-4 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+                        >
+                          <span>Aceptar plan RAG y finalizar</span>
+                          <span className="mt-1 text-xs font-normal opacity-90">
+                            Registra término y libera al técnico
+                          </span>
+                        </button>
+                      )}
+
                       <div className="space-y-2">
                         <p className="text-xs text-ink-muted">Solución usada:</p>
                         <div className="grid grid-cols-1 gap-2">
@@ -335,7 +410,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                       <Button
                         fullWidth
                         variant="warning"
-                        disabled={busy}
+                        disabled={busy || isTechnician}
                         onClick={() =>
                           runAction(() =>
                             orderService.escalate(orderId, 'Escalado manual desde historial'),
@@ -351,7 +426,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                     </p>
                   )}
 
-                  {data?.maquinaId && (
+                  {data?.maquinaId && !isTechnician && (
                     <Button
                       fullWidth
                       variant="secondary"

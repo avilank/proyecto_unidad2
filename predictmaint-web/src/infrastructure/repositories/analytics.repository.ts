@@ -28,9 +28,9 @@ export class AnalyticsRepository implements IAnalyticsRepository {
     return apiClient.get<RecurrentMachineFault[]>('/analytics/recurrent-machines');
   }
 
-  getMachineRecurrence(days = 30): Promise<MachineRecurrence[]> {
+  getMachineRecurrence(days = 7, minFallos = 2): Promise<MachineRecurrence[]> {
     return apiClient.get<MachineRecurrence[]>('/analytics/machine-recurrence', {
-      params: { days },
+      params: { days, minFallos },
     });
   }
 

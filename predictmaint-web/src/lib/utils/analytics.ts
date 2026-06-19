@@ -1,5 +1,4 @@
 import type { AnalyticsSummary } from '@/core/entities';
-import type { NotificationLogEntry } from '@/core/types/api';
 
 export function formatWaitingTime(minutes: number): string {
   if (minutes < 60) return `${minutes} min`;
@@ -18,22 +17,19 @@ export function buildRagBreakdown(summary?: AnalyticsSummary) {
   const conRag = summary?.conRag ?? 0;
   const sinRag = summary?.sinRag ?? 0;
   const sinAtender = summary?.sinAtender ?? 0;
+  const cerradas = conRag + sinRag;
   return {
     total,
     conRag,
     sinRag,
     sinAtender,
-    pctConRag: summary?.pctConRag ?? calcPct(conRag, total),
+    cerradas,
+    abiertas: sinAtender,
+    pctConRag: calcPct(conRag, total),
     pctSinRag: calcPct(sinRag, total),
     pctSinAtender: calcPct(sinAtender, total),
+    pctRagEntreCerradas: calcPct(conRag, cerradas),
   };
-}
-
-export function countCsvsToday(items: NotificationLogEntry[] | undefined): number {
-  if (!items?.length) return 0;
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  return items.filter((item) => new Date(item.enviadoEn) >= start).length;
 }
 
 export function formatNotificationTime(iso: string): string {

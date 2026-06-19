@@ -4,28 +4,37 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   BarChart3,
+  ClipboardList,
   History,
   LayoutDashboard,
   Radio,
-  Settings,
   Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
 import { Logo } from './logo';
 import { useSessionStore } from '@/presentation/stores/sessionStore';
+import { RolUsuario } from '@/core/types';
 
-const NAV = [
+const SUPERVISOR_NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/dashboard/monitoring', label: 'Monitoreo en Tiempo Real', icon: Radio },
   { href: '/dashboard/orders', label: 'Historial', icon: History },
   { href: '/dashboard/technicians', label: 'Gestión de Técnicos', icon: Users },
   { href: '/dashboard/analytics', label: 'Analítica y Reportes', icon: BarChart3 },
-  // { href: '/dashboard/settings', label: 'Configuración', icon: Settings },
 ];
+
+const TECHNICIAN_NAV = [
+  { href: '/dashboard/my-work', label: 'Mi trabajo', icon: ClipboardList },
+];
+
+function isTechnicianRole(rol?: RolUsuario) {
+  return rol === RolUsuario.TECNICO || rol === RolUsuario.TECNICO_SENIOR;
+}
 
 export function Sidebar() {
   const pathname = usePathname();
   const user = useSessionStore((s) => s.user);
+  const nav = isTechnicianRole(user?.rol) ? TECHNICIAN_NAV : SUPERVISOR_NAV;
 
   return (
     <aside className="flex h-screen w-[220px] shrink-0 flex-col border-r border-border bg-bg-deep">
@@ -34,11 +43,14 @@ export function Sidebar() {
       </div>
 
       <nav className="friendly-scroll flex-1 overflow-y-auto">
-        {NAV.map(({ href, label, icon: Icon }) => {
+        {nav.map(({ href, label, icon: Icon }) => {
           const active =
             pathname === href ||
             (href === '/dashboard/monitoring' && pathname.startsWith('/dashboard/analysis')) ||
-            (href !== '/dashboard' && pathname.startsWith(href.split('/').slice(0, 3).join('/')));
+            (href !== '/dashboard' &&
+              href !== '/dashboard/my-work' &&
+              pathname.startsWith(href.split('/').slice(0, 3).join('/'))) ||
+            (href === '/dashboard/my-work' && pathname.startsWith('/dashboard/orders/'));
           return (
             <Link
               key={href}
@@ -69,7 +81,7 @@ export function Sidebar() {
             <p className="truncate text-sm font-medium text-ink">
               {user?.nombre ?? user?.email ?? 'Operador'}
             </p>
-            <p className="truncate text-xs text-ink-muted capitalize">
+            <p className="truncate text-xs capitalize text-ink-muted">
               {user?.rol?.replace('_', ' ') ?? 'Supervisor'}
             </p>
           </div>

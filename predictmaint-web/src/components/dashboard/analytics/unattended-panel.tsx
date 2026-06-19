@@ -2,22 +2,9 @@
 
 import Link from 'next/link';
 import type { UnattendedOrder } from '@/core/types/api';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatWaitingTime, riskBadgeVariant } from '@/lib/utils/analytics';
-import { cn } from '@/lib/utils/cn';
-
-function waitingTone(nivel: string): string {
-  switch (nivel.toUpperCase()) {
-    case 'CRITICAL':
-      return 'text-danger';
-    case 'HIGH':
-      return 'text-warning';
-    default:
-      return 'text-ink-muted';
-  }
-}
+import { formatWaitingTime } from '@/lib/utils/analytics';
 
 function buildAlertHref(order: UnattendedOrder): string {
   const params = new URLSearchParams({ order: order.id });
@@ -58,22 +45,17 @@ export function UnattendedPanel({
               href={buildAlertHref(order)}
               className="block rounded-lg border border-border-soft bg-surface-2/40 px-4 py-3 transition-colors hover:bg-surface-2"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 space-y-1.5">
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="font-semibold text-ink">{order.id}</span>
-                    <span className="text-ink-muted">{order.maquinaId}</span>
-                  </div>
-                  <p className="text-xs">
-                    <span className={cn('font-medium', waitingTone(order.nivelRiesgo))}>
-                      Sin atender: {formatWaitingTime(order.minutosSinAtender)}
-                    </span>
-                    <span className="text-ink-muted"> · Tecnico: {order.tecnico}</span>
-                  </p>
+              <div className="min-w-0 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-semibold text-ink">{order.id}</span>
+                  <span className="text-ink-muted">{order.maquinaId}</span>
                 </div>
-                <Badge variant={riskBadgeVariant(order.nivelRiesgo)}>
-                  {order.nivelRiesgo.toUpperCase()}
-                </Badge>
+                <p className="text-xs">
+                  <span className="font-medium text-warning">
+                    Sin atender: {formatWaitingTime(order.minutosSinAtender)}
+                  </span>
+                  <span className="text-ink-muted"> · Tecnico: {order.tecnico}</span>
+                </p>
               </div>
             </Link>
           ))

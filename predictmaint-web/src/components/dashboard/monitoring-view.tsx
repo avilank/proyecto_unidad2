@@ -24,6 +24,7 @@ import {
   FAULT_KPI_TONE,
   FAULT_TYPE_ORDER,
 } from '@/lib/constants/fault-types';
+import { TipoFallo } from '@/core/types';
 import { cn } from '@/lib/utils/cn';
 import { Radio, X } from 'lucide-react';
 
@@ -139,21 +140,24 @@ export function MonitoringView() {
   const kpis = dashboard.data;
   const pipelinesHoy = kpis?.pipelinesHoy ?? kpis?.analisisHoy ?? kpis?.fallosHoy ?? 0;
   const maquinasEvaluadasHoy = kpis?.maquinasEvaluadasHoy ?? 0;
-  const fallosPorTipo = useMemo(() => {
-    const base = emptyFaultCounts();
-    const fromApi = kpis?.fallosPorTipoHoy;
-    if (fromApi) {
-      for (const tipo of FAULT_TYPE_ORDER) {
-        base[tipo] = fromApi[tipo] ?? 0;
-      }
-    }
-    return base;
-  }, [kpis?.fallosPorTipoHoy]);
-  const fallasDetectadasHoy = useMemo(
+  const fallosPorTipo = useMemo(
+    () => buildActiveFaultCountsByType(alertList),
+    [alertList],
+  );
+  const fallasActivas = useMemo(
     () => FAULT_TYPE_ORDER.reduce((sum, tipo) => sum + fallosPorTipo[tipo], 0),
     [fallosPorTipo],
   );
-  const sinIncidenciaHoy = Math.max(0, pipelinesHoy - fallasDetectadasHoy);
+  const sinIncidenciaActivas = useMemo(() => {
+    const withFault = new Set(
+      alertList.filter((a) => hasActiveFault(a)).map((a) => a.maquinaId),
+    );
+    const simulatedSet = new Set(stream.simulatedMachineIds);
+    const monitored = machineList.filter(
+      (m) => m.ultimaLectura != null || simulatedSet.has(m.id),
+    );
+    return Math.max(0, monitored.length - withFault.size);
+  }, [alertList, machineList, stream.simulatedMachineIds]);
 
   const topRecurrent = recurrent.data?.[0];
 
@@ -187,8 +191,8 @@ export function MonitoringView() {
         Hoy (desde 00:00):{' '}
         <strong className="text-ink">{pipelinesHoy}</strong> eventos S-1 en{' '}
         <strong className="text-ink">{maquinasEvaluadasHoy || machineList.length}</strong> máquinas
-        · <span className="text-warning">{fallasDetectadasHoy} fallas detectadas</span> ·{' '}
-        <span className="text-success">{sinIncidenciaHoy} sin incidencia</span>
+        · <span className="text-warning">{fallasActivas} fallas activas</span> ·{' '}
+        <span className="text-success">{sinIncidenciaActivas} sin incidencia</span>
       </p>
 
       <p className="rounded-lg  bg-accent/5 px-4 py-2 text-xs text-ink-soft">
@@ -655,6 +659,24 @@ function AlertsListModal({
 
 function hasActiveFault(alert?: Alert): boolean {
   return Boolean(alert && alert.estado !== 'finalizado');
+}
+
+function buildActiveFaultCountsByType(alerts: Alert[]): Record<TipoFallo, number> {
+  const base = emptyFaultCounts();
+  const seenByType = new Map<TipoFallo, Set<string>>();
+
+  for (const alert of alerts) {
+    if (!hasActiveFault(alert) || !alert.tipoFallo) continue;
+    const tipo = alert.tipoFallo as TipoFallo;
+    if (!(tipo in base)) continue;
+    const machines = seenByType.get(tipo) ?? new Set<string>();
+    if (machines.has(alert.maquinaId)) continue;
+    machines.add(alert.maquinaId);
+    seenByType.set(tipo, machines);
+    base[tipo] += 1;
+  }
+
+  return base;
 }
 
 function MachineAlertBadge({ alert }: { alert?: Alert }) {

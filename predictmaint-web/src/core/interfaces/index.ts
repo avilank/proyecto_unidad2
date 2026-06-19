@@ -89,7 +89,7 @@ export interface IAnalyticsRepository {
   getDashboardKpis(): Promise<DashboardApiResponse>;
   getSummary(range?: string): Promise<AnalyticsSummary>;
   getRepetitiveFaults(): Promise<RecurrentMachineFault[]>;
-  getMachineRecurrence(days?: number): Promise<MachineRecurrence[]>;
+  getMachineRecurrence(days?: number, minFallos?: number): Promise<MachineRecurrence[]>;
   getUnattendedOrders(): Promise<UnattendedOrder[]>;
   getNotificationLog(limit?: number): Promise<PaginatedResponse<NotificationLogEntry>>;
   getFaultsByType(range?: string): Promise<FaultByType[]>;

@@ -92,6 +92,14 @@ export class OrderRepository implements IOrderRepository {
   escalate(orderId: string, motivo: string): Promise<OrderDetail> {
     return apiClient.post<OrderDetail>(`/orders/${orderId}/escalate`, { motivo });
   }
+
+  startOrder(orderId: string): Promise<OrderDetail> {
+    return apiClient.post<OrderDetail>(`/orders/${orderId}/start`);
+  }
+
+  getTechnicianBoard(): Promise<{ pendientes: Order[]; completadas: Order[] }> {
+    return apiClient.get<{ pendientes: Order[]; completadas: Order[] }>('/orders/my-board');
+  }
 }
 
 export const orderRepository = new OrderRepository();
