@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
-import { Activity, Clock3, Pencil, Plus, Trash2, Users, Wrench, X } from 'lucide-react';
+import { Activity, Pencil, Plus, Trash2, Users, Wrench, X } from 'lucide-react';
 import type { Technician } from '@/core/entities';
 import { Especialidad, EstadoTecnico, Turno } from '@/core/types';
 import { Topbar } from '@/components/common/topbar';
@@ -30,7 +30,6 @@ export function TechniciansView() {
     total: list.length,
     available: list.filter((t) => t.estado === EstadoTecnico.DISPONIBLE).length,
     inProgress: list.filter((t) => t.estado === EstadoTecnico.EN_INTERVENCION).length,
-    off: list.filter((t) => t.estado === EstadoTecnico.FUERA_DE_TURNO).length,
   };
 
   const handleDelete = async (t: Technician) => {
@@ -56,11 +55,10 @@ export function TechniciansView() {
       />
 
       <div className="flex flex-col gap-4 px-6 pb-6 pt-5">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <KpiCard icon={Users} value={stats.total} label="Total técnicos" tone="accent" />
         <KpiCard icon={Activity} value={stats.available} label="Disponibles ahora" tone="success" />
         <KpiCard icon={Wrench} value={stats.inProgress} label="En intervención" tone="warning" />
-        <KpiCard icon={Clock3} value={stats.off} label="Fuera de turno" tone="accent" />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-4">
@@ -180,16 +178,6 @@ export function TechniciansView() {
         </Card>
 
         <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Reglas de asignación automática</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-xs">
-              <Rule tone="danger" title="CRITICAL" body="Técnico disponible de mayor experiencia en turno" />
-              <Rule tone="warning" title="HIGH" body="Especialidad coincidente con tipo de fallo" />
-              <Rule tone="accent" title="MEDIUM" body="Menor carga de órdenes activas" />
-            </CardContent>
-          </Card>
           <Card>
             <CardHeader>
               <CardTitle>Especialidad por tipo de fallo</CardTitle>
@@ -468,28 +456,4 @@ function prettyEspecialidad(value: string) {
 
 function prettyTurno(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function Rule({
-  tone,
-  title,
-  body,
-}: {
-  tone: 'danger' | 'warning' | 'accent';
-  title: string;
-  body: string;
-}) {
-  const dotClass =
-    tone === 'danger' ? 'bg-danger' : tone === 'warning' ? 'bg-warning' : 'bg-accent';
-  const titleClass =
-    tone === 'danger' ? 'text-danger' : tone === 'warning' ? 'text-warning' : 'text-accent';
-  return (
-    <div className="rounded-md bg-surface-2/60 px-3 py-2.5">
-      <div className="flex items-center gap-2">
-        <span className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`} />
-        <p className={`text-[11px] font-bold uppercase tracking-wide ${titleClass}`}>{title}</p>
-      </div>
-      <p className="mt-1.5 pl-4 text-[11px] leading-snug text-ink-soft">{body}</p>
-    </div>
-  );
 }

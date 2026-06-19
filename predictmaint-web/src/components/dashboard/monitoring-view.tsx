@@ -13,8 +13,7 @@ import { useActiveAlerts } from '@/presentation/hooks/useAlerts';
 import { useMachines } from '@/presentation/hooks/useMachines';
 import { useDashboard, useRecurrentFaults } from '@/presentation/hooks/useAnalytics';
 import {
-  MONITORING_DATA_INTERVAL_MS,
-  MONITORING_INITIAL_BATCH_MS,
+  MONITORING_REFRESH_MS,
   useMonitoringStream,
 } from '@/presentation/hooks/useMonitoringStream';
 import { useNextDispatch } from '@/presentation/hooks/useNotifications';
@@ -238,30 +237,20 @@ export function MonitoringView() {
             <CardHeader>
               <CardTitle>Máquinas — Monitoreo en vivo</CardTitle>
               <p className="text-xs text-ink-muted">
-                Batch inicial {MONITORING_INITIAL_BATCH_MS / 1000}s · lecturas cada{' '}
-                {MONITORING_DATA_INTERVAL_MS / 1000}s · solo máquinas con lecturas del simulador
+                Datos desde la base · actualización cada {MONITORING_REFRESH_MS / 1000}s ·
+                nuevas lecturas en tiempo real vía simulador
               </p>
             </CardHeader>
             <CardContent className="space-y-3 p-6 pt-0">
-                {loading && !stream.isInitialBatchReady ? (
+                {loading ? (
                   <Skeleton className="h-48 w-full" />
-                ) : !stream.isInitialBatchReady ? (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-accent/40 bg-accent/5 py-12 text-center">
-                    <span className="inline-flex h-3 w-3 animate-pulse rounded-full bg-accent" />
-                    <p className="text-sm font-medium text-ink">
-                      Esperando batch inicial ({MONITORING_INITIAL_BATCH_MS / 1000}s)…
-                    </p>
-                    <p className="text-xs text-ink-muted">
-                      Las cards aparecerán cuando lleguen lecturas del simulador
-                    </p>
-                  </div>
                 ) : sortedMachines.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-border-soft py-10 text-center">
                     <p className="text-sm text-ink-muted">
-                      Aún no hay máquinas en la simulación
+                      Aún no hay lecturas registradas
                     </p>
                     <p className="mt-1 text-xs text-ink-muted">
-                      Ejecuta el simulador para ver las cards entrar en tiempo real
+                      Ejecuta el simulador de sensores para empezar a ver las máquinas
                     </p>
                   </div>
                 ) : (

@@ -406,19 +406,6 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                       >
                         <span>Finalizar Orden</span>
                       </button>
-
-                      <Button
-                        fullWidth
-                        variant="warning"
-                        disabled={busy || isTechnician}
-                        onClick={() =>
-                          runAction(() =>
-                            orderService.escalate(orderId, 'Escalado manual desde historial'),
-                          )
-                        }
-                      >
-                        Escalar a Supervisor
-                      </Button>
                     </>
                   ) : (
                     <p className="text-sm text-ink-muted">

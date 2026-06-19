@@ -8,8 +8,8 @@ export interface WebhookNotificationPayload {
   phone?: string;
   whatsappSummary?: string;
   emailBody?: string;
-  pdf?: string;
-  filename?: string;
+  /** Nombre del adjunto para n8n ($binary.archivo_pdf). */
+  attachmentFilename?: string;
 }
 
 @Injectable()
@@ -31,24 +31,37 @@ export class WebhookNotifierService {
       );
     }
 
-    const body: Record<string, string> = {
-      email: payload.email,
-      subject: payload.subject,
-      title: payload.title,
-      pdf: payload.pdf ?? '',
-      filename: payload.filename ?? 'notificacion.txt',
-    };
+    const form = new FormData();
+    form.append('email', payload.email);
+    form.append('subject', payload.subject);
+    form.append('title', payload.title);
 
-    if (payload.phone?.trim()) body.phone = payload.phone.trim();
-    if (payload.whatsappSummary?.trim()) {
-      body.whatsappSummary = payload.whatsappSummary.trim();
+    if (payload.phone?.trim()) {
+      form.append('phone', payload.phone.trim());
     }
-    if (payload.emailBody?.trim()) body.emailBody = payload.emailBody.trim();
+    if (payload.whatsappSummary?.trim()) {
+      form.append('whatsappSummary', payload.whatsappSummary.trim());
+    }
+
+    const htmlBody = payload.emailBody?.trim() ?? '';
+    if (htmlBody) {
+      form.append('emailBody', htmlBody);
+      form.append('message', htmlBody);
+      form.append('includeEmail', 'true');
+
+      const filename = payload.attachmentFilename ?? 'notificacion.html';
+      form.append(
+        'archivo_pdf',
+        new Blob([htmlBody], { type: 'text/html;charset=utf-8' }),
+        filename,
+      );
+    } else {
+      form.append('includeEmail', 'false');
+    }
 
     const res = await fetch(webhookUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: form,
     });
 
     if (!res.ok) {

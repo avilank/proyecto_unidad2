@@ -5,13 +5,12 @@ import { useSWRConfig } from 'swr';
 import { useSessionStore } from '@/presentation/stores/sessionStore';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
-export const MONITORING_INITIAL_BATCH_MS = 15_000;
-export const MONITORING_DATA_INTERVAL_MS = 8_000;
+/** Intervalo de refresco de datos desde la API (lecturas ya persistidas en BD). */
+export const MONITORING_REFRESH_MS = 8_000;
 
 export interface MonitoringStreamState {
   isConnected: boolean;
   lastEventAt: string | null;
-  isInitialBatchReady: boolean;
   simulatedMachineIds: string[];
   readingTick: number;
 }
@@ -22,7 +21,6 @@ export function useMonitoringStream(): MonitoringStreamState {
   const [state, setState] = useState<MonitoringStreamState>({
     isConnected: false,
     lastEventAt: null,
-    isInitialBatchReady: false,
     simulatedMachineIds: [],
     readingTick: 0,
   });
@@ -31,14 +29,6 @@ export function useMonitoringStream(): MonitoringStreamState {
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const simulatedRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    const batchTimer = setTimeout(() => {
-      setState((prev) => ({ ...prev, isInitialBatchReady: true }));
-    }, MONITORING_INITIAL_BATCH_MS);
-
-    return () => clearTimeout(batchTimer);
-  }, []);
 
   useEffect(() => {
     if (!token) return;
@@ -112,28 +102,23 @@ export function useMonitoringStream(): MonitoringStreamState {
     };
 
     connect();
-
-    const startPollTimer = setTimeout(() => {
-      revalidate();
-      pollTimerRef.current = setInterval(revalidate, MONITORING_DATA_INTERVAL_MS);
-    }, MONITORING_INITIAL_BATCH_MS);
+    revalidate();
+    pollTimerRef.current = setInterval(revalidate, MONITORING_REFRESH_MS);
 
     const simulated = simulatedRef.current;
 
     return () => {
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-      clearTimeout(startPollTimer);
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
       esRef.current?.close();
       esRef.current = null;
       simulated.clear();
-      setState((prev) => ({
+      setState({
         isConnected: false,
         lastEventAt: null,
-        isInitialBatchReady: prev.isInitialBatchReady,
         simulatedMachineIds: [],
         readingTick: 0,
-      }));
+      });
     };
   }, [token, mutate]);
 

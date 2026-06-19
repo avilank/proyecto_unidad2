@@ -73,7 +73,11 @@ export class NotificationsService {
       where,
       include: [
         { model: Orden, attributes: ['codigo'] },
-        { model: Tecnico, attributes: ['idTecnico', 'nombres', 'apellidos'] },
+        {
+          model: Tecnico,
+          attributes: ['idTecnico'],
+          include: [{ model: Usuario, attributes: ['nombres', 'apellidos'] }],
+        },
       ],
       offset: (page - 1) * limit,
       limit,
@@ -177,12 +181,12 @@ export class NotificationsService {
 
     const ocurrenciasVentana = await this.countOccurrencesInWindow(
       orden.idMaquina,
-      tipoFalloCodigo,
+      lider?.idTipoFallo,
       orden.idOrden,
     );
     const historial = await this.loadInterventionHistory(
       orden.idMaquina,
-      tipoFalloCodigo,
+      lider?.idTipoFallo,
       orden.idOrden,
     );
 
@@ -231,6 +235,7 @@ export class NotificationsService {
         phone: needsPhone ? phone : undefined,
         whatsappSummary: needsPhone ? whatsappSummary : undefined,
         emailBody: needsEmail ? emailBody : undefined,
+        attachmentFilename: needsEmail ? `alerta-${orden.codigo}.html` : undefined,
       });
 
       const canal = this.resolveCanal(needsPhone, needsEmail);
@@ -238,7 +243,7 @@ export class NotificationsService {
         tecnicoId: tecnico.idTecnico,
         idOrden: orden.idOrden,
         maquinas: maquinaCodigo,
-        motivo: `${tipoFalloCodigo} — ${nivel}`,
+        motivo: tipoFalloCodigo,
         canal,
         tipoEnvio: ocurrenciasVentana >= 3 ? TipoEnvio.REPETITIVO : TipoEnvio.ALERTA_CRITICA,
         estado: EstadoMensaje.ENTREGADO,
@@ -249,7 +254,7 @@ export class NotificationsService {
         tecnicoId: tecnico.idTecnico,
         idOrden: orden.idOrden,
         maquinas: maquinaCodigo,
-        motivo: `${tipoFalloCodigo} — ${nivel}`,
+        motivo: tipoFalloCodigo,
         canal: this.resolveCanal(needsPhone, needsEmail),
         tipoEnvio: TipoEnvio.ALERTA_CRITICA,
         estado: EstadoMensaje.FALLIDO,
@@ -288,10 +293,10 @@ export class NotificationsService {
 
   private async countOccurrencesInWindow(
     idMaquina: number,
-    tipoFallo: string,
+    idTipoFallo: number | undefined,
     excludeOrdenId: number,
   ): Promise<number> {
-    if (tipoFallo === '—') return 1;
+    if (!idTipoFallo) return 1;
 
     const from = new Date(Date.now() - VENTANA_REPETITIVO_DIAS * 24 * 60 * 60 * 1000);
     const ordenes = await this.ordenModel.findAll({
@@ -307,9 +312,8 @@ export class NotificationsService {
           include: [
             {
               model: ClasificacionFallo,
-              where: { esLider: true },
+              where: { esLider: true, idTipoFallo },
               required: true,
-              include: [{ model: TipoFallo, where: { codigo: tipoFallo }, required: true }],
             },
           ],
         },
@@ -321,10 +325,10 @@ export class NotificationsService {
 
   private async loadInterventionHistory(
     idMaquina: number,
-    tipoFallo: string,
+    idTipoFallo: number | undefined,
     excludeOrdenId: number,
   ) {
-    if (tipoFallo === '—') return [];
+    if (!idTipoFallo) return [];
 
     const from = new Date(Date.now() - VENTANA_REPETITIVO_DIAS * 24 * 60 * 60 * 1000);
     const ordenes = await this.ordenModel.findAll({
@@ -342,9 +346,8 @@ export class NotificationsService {
           include: [
             {
               model: ClasificacionFallo,
-              where: { esLider: true },
+              where: { esLider: true, idTipoFallo },
               required: true,
-              include: [{ model: TipoFallo, where: { codigo: tipoFallo }, required: true }],
             },
           ],
         },

@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import { TableSkeleton } from '@/components/ui/skeleton';
-import { formatNotificationEstado, formatNotificationTime } from '@/lib/utils/analytics';
+import { formatNotificationEstado, formatNotificationMotivo, formatNotificationTime } from '@/lib/utils/analytics';
 
 export function CsvLogTable({
   items,
@@ -45,7 +45,7 @@ export function CsvLogTable({
               {
                 key: 'motivo',
                 header: 'Motivo',
-                render: (row) => row.motivo ?? '—',
+                render: (row) => formatNotificationMotivo(row.motivo),
               },
               {
                 key: 'canal',

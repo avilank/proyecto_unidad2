@@ -1,17 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   BarChart3,
   ClipboardList,
   History,
   LayoutDashboard,
+  LogOut,
   Radio,
   Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
 import { Logo } from './logo';
+import { authService } from '@/application/services/auth.service';
 import { useSessionStore } from '@/presentation/stores/sessionStore';
 import { RolUsuario } from '@/core/types';
 
@@ -33,8 +35,21 @@ function isTechnicianRole(rol?: RolUsuario) {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const user = useSessionStore((s) => s.user);
+  const clearSession = useSessionStore((s) => s.clearSession);
   const nav = isTechnicianRole(user?.rol) ? TECHNICIAN_NAV : SUPERVISOR_NAV;
+
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+    } catch {
+      // La sesión local se limpia aunque falle el endpoint
+    } finally {
+      clearSession();
+      router.replace('/login');
+    }
+  };
 
   return (
     <aside className="flex h-screen w-[220px] shrink-0 flex-col border-r border-border bg-bg-deep">
@@ -77,7 +92,7 @@ export function Sidebar() {
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/20 text-xs font-bold text-accent">
             {user?.email?.slice(0, 2).toUpperCase() ?? 'OP'}
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-ink">
               {user?.nombre ?? user?.email ?? 'Operador'}
             </p>
@@ -86,6 +101,14 @@ export function Sidebar() {
             </p>
           </div>
         </div>
+        <button
+          type="button"
+          onClick={() => void handleLogout()}
+          className="mt-3 flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-ink-soft transition-colors hover:bg-surface-2 hover:text-ink"
+        >
+          <LogOut className="h-4 w-4 shrink-0" />
+          Cerrar sesión
+        </button>
       </div>
     </aside>
   );

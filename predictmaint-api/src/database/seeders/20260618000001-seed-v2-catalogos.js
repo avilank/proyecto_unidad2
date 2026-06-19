@@ -1,5 +1,7 @@
 'use strict';
 
+const REGLAS_NOTIFICACION = require('./data/reglas-notificacion.data');
+
 const PASSWORD_HASH =
   '$2b$10$FCywzye.uD3YVdILNKo.te09gVSMP0clcaRciOpVXpnxjPuRaM7iS'; // password123
 
@@ -209,6 +211,10 @@ module.exports = {
       "SELECT setval(pg_get_serial_sequence('reglas_sensor', 'id_regla'), 4, true);",
     );
 
+    await queryInterface.bulkInsert('regla_notificacion', REGLAS_NOTIFICACION, {
+      ignoreDuplicates: true,
+    });
+
     await queryInterface.bulkInsert('usuarios', [
       {
         id_usuario: 1,
@@ -384,6 +390,7 @@ module.exports = {
   },
 
   async down(queryInterface) {
+    await queryInterface.bulkDelete('regla_notificacion', null, {});
     await queryInterface.bulkDelete('reglas_asignacion', null, {});
     await queryInterface.bulkDelete('maquinas', null, {});
     await queryInterface.bulkDelete('tecnicos', null, {});

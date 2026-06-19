@@ -50,6 +50,13 @@ export function formatNotificationEstado(estado: string): string {
   }
 }
 
+/** Motivo del log: solo tipo de fallo (sin nivel de riesgo). */
+export function formatNotificationMotivo(motivo: string | null | undefined): string {
+  if (!motivo?.trim()) return '—';
+  const sep = motivo.indexOf(' — ');
+  return sep >= 0 ? motivo.slice(0, sep).trim() : motivo.trim();
+}
+
 export function recurrenceSeverity(fallos: number, max: number): {
   barColor: string;
   textClass: 'text-success' | 'text-warning' | 'text-danger';

@@ -8,6 +8,7 @@ import {
   Maquina,
   ModeloMl,
   ReglaAsignacion,
+  ReglaNotificacion,
   ReglaSensor,
   Rol,
   Tecnico,
@@ -18,13 +19,31 @@ import {
 const PASSWORD_HASH =
   '$2b$10$FCywzye.uD3YVdILNKo.te09gVSMP0clcaRciOpVXpnxjPuRaM7iS';
 
+const REGLAS_NOTIFICACION = [
+  { nivel: 'LOW', recibe: 'Nadie', canal: '—' },
+  { nivel: 'MEDIUM', recibe: 'Técnico asignado', canal: 'WhatsApp texto' },
+  { nivel: 'HIGH', recibe: 'Técnico asignado', canal: 'WhatsApp inmediato' },
+  { nivel: 'CRITICAL', recibe: 'Técnico + Supervisor', canal: 'WhatsApp + Email' },
+] as const;
+
 @Injectable()
 export class DatabaseSeedService {
   private readonly logger = new Logger(DatabaseSeedService.name);
 
   constructor(@InjectConnection() private readonly sequelize: Sequelize) {}
 
+  async ensureReglasNotificacion(): Promise<void> {
+    const count = await ReglaNotificacion.count();
+    if (count > 0) {
+      return;
+    }
+    await ReglaNotificacion.bulkCreate([...REGLAS_NOTIFICACION]);
+    this.logger.log('Reglas de notificación cargadas (4 niveles).');
+  }
+
   async seedIfEmpty(): Promise<void> {
+    await this.ensureReglasNotificacion();
+
     const count = await Usuario.count();
     if (count > 0) {
       this.logger.log('Base ya poblada; seed omitido.');
@@ -177,10 +196,42 @@ export class DatabaseSeedService {
 
       await Tecnico.bulkCreate(
         [
-          { idUsuario: usuarios[1].idUsuario, idEspecialidad: espByName.mecanico, turno: 'mañana', nivelExperiencia: 3, disponibilidad: 'disponible' },
-          { idUsuario: usuarios[2].idUsuario, idEspecialidad: espByName.electrico, turno: 'tarde', nivelExperiencia: 2, disponibilidad: 'disponible' },
-          { idUsuario: usuarios[3].idUsuario, idEspecialidad: espByName.general, turno: 'noche', nivelExperiencia: 2, disponibilidad: 'disponible' },
-          { idUsuario: usuarios[4].idUsuario, idEspecialidad: espByName.hidraulico, turno: 'mañana', nivelExperiencia: 3, disponibilidad: 'disponible' },
+          {
+            idUsuario: usuarios[1].idUsuario,
+            idEspecialidad: espByName.mecanico,
+            turno: 'mañana',
+            nivelExperiencia: 3,
+            disponibilidad: 'disponible',
+            enviarWssp: true,
+            enviarCorreo: false,
+          },
+          {
+            idUsuario: usuarios[2].idUsuario,
+            idEspecialidad: espByName.electrico,
+            turno: 'tarde',
+            nivelExperiencia: 2,
+            disponibilidad: 'disponible',
+            enviarWssp: true,
+            enviarCorreo: false,
+          },
+          {
+            idUsuario: usuarios[3].idUsuario,
+            idEspecialidad: espByName.general,
+            turno: 'noche',
+            nivelExperiencia: 2,
+            disponibilidad: 'disponible',
+            enviarWssp: true,
+            enviarCorreo: false,
+          },
+          {
+            idUsuario: usuarios[4].idUsuario,
+            idEspecialidad: espByName.hidraulico,
+            turno: 'mañana',
+            nivelExperiencia: 3,
+            disponibilidad: 'disponible',
+            enviarWssp: true,
+            enviarCorreo: false,
+          },
         ],
         tx,
       );
