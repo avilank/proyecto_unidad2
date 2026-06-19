@@ -467,22 +467,20 @@ function MachineLiveCard({
         </div>
       )}
 
-      <Link
-        href={
-          alert?.ordenId ?? alert?.orderId
-            ? `/dashboard/analysis/${machine.id}?order=${alert.ordenId ?? alert.orderId}`
-            : `/dashboard/analysis/${machine.id}`
-        }
-        className="mt-1 inline-block"
-      >
-        <Button
-          variant={fault ? 'warning' : 'ghost'}
-          size="sm"
-          className={fault ? undefined : 'bg-black/15 text-ink-soft hover:bg-black/25 hover:text-ink'}
+      {fault && alert && (
+        <Link
+          href={
+            alert.ordenId ?? alert.orderId
+              ? `/dashboard/analysis/${machine.id}?order=${alert.ordenId ?? alert.orderId}`
+              : `/dashboard/analysis/${machine.id}`
+          }
+          className="mt-1 inline-block"
         >
-          Ver análisis →
-        </Button>
-      </Link>
+          <Button variant="warning" size="sm">
+            Ver análisis →
+          </Button>
+        </Link>
+      )}
     </div>
   );
 }
