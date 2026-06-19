@@ -1,14 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op } from 'sequelize';
 import { addMinutes } from '../common/utils/shift.util';
 import { EstadoOrden, NivelRiesgo } from '../common/enums';
+import {
+  ORDER_CREATED_EVENT,
+  OrderCreatedPayload,
+} from '../common/events/order.events';
 import { tecnicoNombre } from '../common/utils/tecnico-display.util';
 import { Alerta } from '../database/models/alerta.model';
 import { AnalisisFallo } from '../database/models/analisis-fallo.model';
 import { ClasificacionFallo } from '../database/models/clasificacion-fallo.model';
 import { EventoOrden } from '../database/models/evento-orden.model';
+import { Maquina } from '../database/models/maquina.model';
 import { Orden } from '../database/models/orden.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
 import { TechniciansService } from '../technicians/technicians.service';
@@ -23,6 +29,7 @@ export class AssignmentRetryService {
     @InjectModel(EventoOrden) private readonly eventoModel: typeof EventoOrden,
     @InjectModel(ClasificacionFallo) private readonly clasificacionModel: typeof ClasificacionFallo,
     private readonly techniciansService: TechniciansService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   @Cron('0 * * * * *')
@@ -35,6 +42,7 @@ export class AssignmentRetryService {
         proximoReintentoAsignacion: { [Op.lte]: now },
       },
       include: [
+        { model: Maquina },
         {
           model: AnalisisFallo,
           include: [
@@ -75,6 +83,16 @@ export class AssignmentRetryService {
           actor: 'sistema',
           fechaEvento: now,
         });
+
+        const payload: OrderCreatedPayload = {
+          orderId: order.codigo,
+          tecnicoId: tecnico.idTecnico,
+          maquinaId: order.maquina?.codigo ?? String(order.idMaquina),
+          nivelRiesgo:
+            (order.analisis?.nivelRiesgo as NivelRiesgo) ?? NivelRiesgo.MEDIUM,
+        };
+        this.eventEmitter.emit(ORDER_CREATED_EVENT, payload);
+
         this.logger.log(`Orden ${order.codigo} asignada`);
         continue;
       }

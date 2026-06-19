@@ -19,7 +19,7 @@ export class NotificationsController {
   }
 
   @Post('send')
-  @ApiOperation({ summary: 'Enviar notificación (stub)' })
+  @ApiOperation({ summary: 'Enviar notificación de alerta al técnico asignado' })
   send(@Body() dto: SendNotificationDto) {
     return this.notificationsService.send(dto);
   }

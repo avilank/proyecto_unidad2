@@ -8,6 +8,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import authConfig from './config/auth.config';
 import databaseConfig from './config/database.config';
 import mlConfig from './config/ml.config';
+import notificationsConfig from './config/notifications.config';
 import { sequelizeConfig } from './config/sequelize.config';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
@@ -32,7 +33,7 @@ import { MonitoringModule } from './monitoring/monitoring.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [databaseConfig, authConfig, mlConfig],
+      load: [databaseConfig, authConfig, mlConfig, notificationsConfig],
     }),
     EventEmitterModule.forRoot(),
     ScheduleModule.forRoot(),
