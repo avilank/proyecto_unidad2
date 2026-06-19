@@ -9,6 +9,7 @@ import authConfig from './config/auth.config';
 import databaseConfig from './config/database.config';
 import mlConfig from './config/ml.config';
 import notificationsConfig from './config/notifications.config';
+import emailConfig from './config/email.config';
 import { sequelizeConfig } from './config/sequelize.config';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
@@ -33,7 +34,7 @@ import { MonitoringModule } from './monitoring/monitoring.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [databaseConfig, authConfig, mlConfig, notificationsConfig],
+      load: [databaseConfig, authConfig, mlConfig, notificationsConfig, emailConfig],
     }),
     EventEmitterModule.forRoot(),
     ScheduleModule.forRoot(),
