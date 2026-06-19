@@ -33,6 +33,12 @@ import {
 } from './alert-message.builder';
 import { SendNotificationDto } from './dto/notification.dto';
 import { WebhookNotifierService } from './webhook-notifier.service';
+import { SmtpEmailService } from '../integrations/email/smtp-email.service';
+import {
+  buildAssignmentEmailHtml,
+  buildAssignmentEmailSubject,
+  buildAssignmentEmailText,
+} from '../integrations/email/templates/assignment-notification.template';
 
 const VENTANA_REPETITIVO_DIAS = 7;
 
@@ -47,6 +53,7 @@ export class NotificationsService {
     @InjectModel(ReglaNotificacion) private readonly reglaModel: typeof ReglaNotificacion,
     @InjectModel(RecomendacionRag) private readonly recomendacionModel: typeof RecomendacionRag,
     private readonly webhookNotifier: WebhookNotifierService,
+    private readonly smtpEmail: SmtpEmailService,
     private readonly config: ConfigService,
   ) {}
 
@@ -155,12 +162,16 @@ export class NotificationsService {
     const canalRegla = regla?.canal?.toLowerCase() ?? '';
     const allowWhatsapp = canalRegla.includes('whatsapp') || canalRegla.includes('whats');
     const allowEmail = canalRegla.includes('email');
+    const smtpReady = this.smtpEmail.isConfigured();
 
     const sendWhatsapp = tecnico.enviarWssp !== false && allowWhatsapp;
-    const sendEmail =
-      allowEmail && (tecnico.enviarCorreo === true || nivel === NivelRiesgo.CRITICAL);
+    const sendEmailSmtp = smtpReady && Boolean(tecnico.usuario.correo?.trim());
+    const sendEmailWebhook =
+      !smtpReady &&
+      allowEmail &&
+      (tecnico.enviarCorreo === true || nivel === NivelRiesgo.CRITICAL);
 
-    if (!sendWhatsapp && !sendEmail) {
+    if (!sendWhatsapp && !sendEmailSmtp && !sendEmailWebhook) {
       this.logger.debug(
         `Sin canales activos para técnico ${payload.tecnicoId} nivel ${nivel}`,
       );
@@ -213,11 +224,22 @@ export class NotificationsService {
     }
 
     const whatsappSummary = buildWhatsappSummary(messageInput);
-    const emailBody = buildEmailHtml(messageInput);
-    const subject = buildEmailSubject(messageInput);
+    const assignmentEmailInput = {
+      ...messageInput,
+      tecnicoNombre: tecnicoNombre(tecnico),
+    };
+    const emailBody = sendEmailSmtp
+      ? buildAssignmentEmailHtml(assignmentEmailInput)
+      : buildEmailHtml(messageInput);
+    const emailText = sendEmailSmtp
+      ? buildAssignmentEmailText(assignmentEmailInput)
+      : undefined;
+    const subject = sendEmailSmtp
+      ? buildAssignmentEmailSubject(assignmentEmailInput)
+      : buildEmailSubject(messageInput);
 
     const needsPhone = Boolean(sendWhatsapp && phone);
-    const needsEmail = Boolean(sendEmail);
+    const needsEmail = Boolean(sendEmailSmtp || sendEmailWebhook);
 
     if (sendWhatsapp && !phone) {
       this.logger.warn(`Técnico ${payload.tecnicoId} sin teléfono — WhatsApp omitido`);
@@ -228,15 +250,28 @@ export class NotificationsService {
     }
 
     try {
-      await this.webhookNotifier.send({
-        email,
-        subject,
-        title: `Alerta de mantenimiento — ${maquinaCodigo}`,
-        phone: needsPhone ? phone : undefined,
-        whatsappSummary: needsPhone ? whatsappSummary : undefined,
-        emailBody: needsEmail ? emailBody : undefined,
-        attachmentFilename: needsEmail ? `alerta-${orden.codigo}.html` : undefined,
-      });
+      if (sendEmailSmtp) {
+        this.logger.log(
+          `Enviando asignación ORD ${orden.codigo} a ${email} (${tecnicoNombre(tecnico)})`,
+        );
+        await this.smtpEmail.send({
+          to: email,
+          subject,
+          html: emailBody,
+          text: emailText,
+        });
+      }
+
+      if (needsPhone || sendEmailWebhook) {
+        await this.webhookNotifier.send({
+          email,
+          subject,
+          title: `Alerta de mantenimiento — ${maquinaCodigo}`,
+          phone: needsPhone ? phone : undefined,
+          whatsappSummary: needsPhone ? whatsappSummary : undefined,
+          emailBody: sendEmailWebhook ? emailBody : undefined,
+        });
+      }
 
       const canal = this.resolveCanal(needsPhone, needsEmail);
       await this.mensajeModel.create({
@@ -296,7 +331,7 @@ export class NotificationsService {
     idTipoFallo: number | undefined,
     excludeOrdenId: number,
   ): Promise<number> {
-    if (!idTipoFallo) return 1;
+    if (idTipoFallo == null) return 1;
 
     const from = new Date(Date.now() - VENTANA_REPETITIVO_DIAS * 24 * 60 * 60 * 1000);
     const ordenes = await this.ordenModel.findAll({
@@ -305,15 +340,18 @@ export class NotificationsService {
         fechaCreacion: { [Op.gte]: from },
         idOrden: { [Op.ne]: excludeOrdenId },
       },
+      attributes: ['idOrden'],
       include: [
         {
           model: AnalisisFallo,
           required: true,
+          attributes: ['idAnalisis'],
           include: [
             {
               model: ClasificacionFallo,
               where: { esLider: true, idTipoFallo },
               required: true,
+              attributes: ['idClasificacion'],
             },
           ],
         },
@@ -328,7 +366,7 @@ export class NotificationsService {
     idTipoFallo: number | undefined,
     excludeOrdenId: number,
   ) {
-    if (!idTipoFallo) return [];
+    if (idTipoFallo == null) return [];
 
     const from = new Date(Date.now() - VENTANA_REPETITIVO_DIAS * 24 * 60 * 60 * 1000);
     const ordenes = await this.ordenModel.findAll({
@@ -343,11 +381,13 @@ export class NotificationsService {
         {
           model: AnalisisFallo,
           required: true,
+          attributes: ['idAnalisis'],
           include: [
             {
               model: ClasificacionFallo,
               where: { esLider: true, idTipoFallo },
               required: true,
+              attributes: ['idClasificacion'],
             },
           ],
         },

@@ -173,6 +173,14 @@ async function deleteToday(seq, startDay, transaction, existingTables) {
       )`,
     });
   }
+  if (has('mensaje_enviado')) {
+    steps.push({
+      label: 'mensaje_enviado',
+      sql: `DELETE FROM mensaje_enviado WHERE id_orden IN (
+        SELECT id_orden FROM ordenes_mantenimiento WHERE fecha_creacion >= :startDay
+      ) OR enviado_en >= :startDay`,
+    });
+  }
   if (has('ordenes_mantenimiento')) {
     steps.push({
       label: 'ordenes_mantenimiento',
@@ -195,12 +203,6 @@ async function deleteToday(seq, startDay, transaction, existingTables) {
     steps.push({
       label: 'fallo_repetitivo',
       sql: `DELETE FROM fallo_repetitivo WHERE ultima_ocurrencia_en >= :startDay`,
-    });
-  }
-  if (has('mensaje_enviado')) {
-    steps.push({
-      label: 'mensaje_enviado',
-      sql: `DELETE FROM mensaje_enviado WHERE enviado_en >= :startDay`,
     });
   }
   if (has('audit_logs')) {

@@ -16,9 +16,11 @@ import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 import { OrderNotificationListener } from './order-notification.listener';
 import { WebhookNotifierService } from './webhook-notifier.service';
+import { EmailModule } from '../integrations/email/email.module';
 
 @Module({
   imports: [
+    EmailModule,
     SequelizeModule.forFeature([
       Orden,
       Tecnico,
