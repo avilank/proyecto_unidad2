@@ -22,6 +22,7 @@ import { generateAlertCodigo, generateOrderCodigo } from '../common/utils/id-gen
 import { calculatePowerW } from '../common/utils/power.util';
 import { evaluateSensorRules } from '../common/utils/sensor-rules.util';
 import { findMaquinaByCodigo } from '../common/utils/maquina.util';
+import { resolveTipoFalloByMinAgreement } from '../common/utils/classify-fault.util';
 import { resolveModeloId } from '../common/utils/modelo-ml.util';
 import { tecnicoNombre } from '../common/utils/tecnico-display.util';
 import {
@@ -123,7 +124,14 @@ export class SensorReadingsService {
   private async getUmbralFalla(): Promise<number> {
     const cfg = await this.configAlertasModel.findOne();
     if (!cfg) return UMBRAL_ENSEMBLE_FALLA_DEFAULT;
+    const dedicated = Number(cfg.umbralEnsembleFalla);
+    if (!Number.isNaN(dedicated) && dedicated > 0) return dedicated;
     return Number(cfg.riesgoMedio) || UMBRAL_ENSEMBLE_FALLA_DEFAULT;
+  }
+
+  private async getAgreementMinimo(): Promise<string> {
+    const cfg = await this.configAlertasModel.findOne();
+    return cfg?.agreementMinimoS3 ?? 'MEDIO';
   }
 
   private getCooldownMinutos(): number {
@@ -406,7 +414,10 @@ export class SensorReadingsService {
       await alert.update({ estado: EstadoAlerta.CLASIFICANDO });
 
       const classifyResult = await this.mlGateway.classify(features);
-      tipoFalloFinal = classifyResult.tipoPredicho;
+      const agreementMinimo = await this.getAgreementMinimo();
+      const votes = classifyResult.modelos.map((m) => m.tipoPredicho);
+      const resolved = resolveTipoFalloByMinAgreement(votes, agreementMinimo);
+      tipoFalloFinal = resolved.tipo ?? triggered.tipoFallo ?? classifyResult.tipoPredicho;
 
       for (const m of classifyResult.modelos) {
         const idModelo = await resolveModeloId(m.modelo, 'S2');
@@ -433,7 +444,7 @@ export class SensorReadingsService {
       }
 
       await analisis.update({
-        agreement: classifyResult.agreement,
+        agreement: resolved.agreement,
         prediccion: 'FALLA',
       });
 
@@ -447,7 +458,7 @@ export class SensorReadingsService {
       await this.eventoModel.create({
         idOrden: order.idOrden,
         etapa: 'clasificacion_s2',
-        descripcion: `Clasificación S-2: ${classifyResult.tipoPredicho} (agreement ${classifyResult.agreement})`,
+        descripcion: `Clasificación S-2: ${tipoFalloFinal} (agreement ${resolved.agreement}, ${resolved.winnerVotes}/3)`,
         actor: 'sistema',
         fechaEvento: new Date(),
       });

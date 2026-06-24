@@ -3,6 +3,11 @@ import { InjectModel } from '@nestjs/sequelize';
 import { ConfiguracionAlertas } from '../database/models/configuracion-alertas.model';
 import { FuenteRag } from '../database/models/fuente-rag.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
+import {
+  DEFAULT_DISPATCH_SCHEDULE,
+  parseDispatchSchedule,
+  type DispatchScheduleItem,
+} from './dispatch-schedule.defaults';
 
 const RAG_SOURCE_DESCRIPTIONS: Record<string, string> = {
   'Theissler et al. (2021)': 'ML para mantenimiento predictivo, monitoreo de condición y priorización de riesgo.',
@@ -21,32 +26,60 @@ export class ConfigCatalogService {
     @InjectModel(FuenteRag) private readonly fuenteRagModel: typeof FuenteRag,
   ) {}
 
+  private async getOrCreateConfig(): Promise<ConfiguracionAlertas> {
+    let cfg = await this.configModel.findOne();
+    if (!cfg) {
+      cfg = await this.configModel.create({
+        riesgoBajo: 0.4,
+        riesgoMedio: 0.65,
+        riesgoAlto: 0.85,
+        riesgoCritico: 1.0,
+        tiempoEscalamiento: 30,
+        umbralEnsembleFalla: 0.5,
+        agreementMinimoS3: 'MEDIO',
+        horariosEnvioJson: JSON.stringify(DEFAULT_DISPATCH_SCHEDULE),
+        fechaActualizacion: new Date(),
+      });
+    }
+    return cfg;
+  }
+
   async getConfig(_grupo?: string) {
-    const cfg = await this.configModel.findOne();
-    if (!cfg) return {};
+    const cfg = await this.getOrCreateConfig();
     return {
-      umbral_ensemble_falla: String(Number(cfg.riesgoMedio)),
+      umbral_ensemble_falla: String(Number(cfg.umbralEnsembleFalla ?? 0.5)),
+      agreement_minimo_s3: cfg.agreementMinimoS3 ?? 'MEDIO',
       riesgo_bajo: String(cfg.riesgoBajo),
       riesgo_medio: String(cfg.riesgoMedio),
       riesgo_alto: String(cfg.riesgoAlto),
       riesgo_critico: String(cfg.riesgoCritico),
       tiempo_escalamiento: String(cfg.tiempoEscalamiento),
+      horarios_envio: parseDispatchSchedule(cfg.horariosEnvioJson),
     };
   }
 
-  async patchConfig(values: Record<string, string>) {
-    const cfg = await this.configModel.findOne();
-    if (!cfg) throw new NotFoundException('Configuración no encontrada');
-    await cfg.update({
-      ...(values.riesgo_bajo && { riesgoBajo: parseFloat(values.riesgo_bajo) }),
-      ...(values.riesgo_medio && { riesgoMedio: parseFloat(values.riesgo_medio) }),
-      ...(values.riesgo_alto && { riesgoAlto: parseFloat(values.riesgo_alto) }),
-      ...(values.riesgo_critico && { riesgoCritico: parseFloat(values.riesgo_critico) }),
-      ...(values.tiempo_escalamiento && {
-        tiempoEscalamiento: parseInt(values.tiempo_escalamiento, 10),
-      }),
-      fechaActualizacion: new Date(),
-    });
+  async patchConfig(values: Record<string, unknown>) {
+    const cfg = await this.getOrCreateConfig();
+    const patch: Partial<ConfiguracionAlertas> = { fechaActualizacion: new Date() };
+
+    if (values.riesgo_bajo != null) patch.riesgoBajo = parseFloat(String(values.riesgo_bajo));
+    if (values.riesgo_medio != null) patch.riesgoMedio = parseFloat(String(values.riesgo_medio));
+    if (values.riesgo_alto != null) patch.riesgoAlto = parseFloat(String(values.riesgo_alto));
+    if (values.riesgo_critico != null) patch.riesgoCritico = parseFloat(String(values.riesgo_critico));
+    if (values.tiempo_escalamiento != null) {
+      patch.tiempoEscalamiento = parseInt(String(values.tiempo_escalamiento), 10);
+    }
+    if (values.umbral_ensemble_falla != null) {
+      patch.umbralEnsembleFalla = parseFloat(String(values.umbral_ensemble_falla));
+    }
+    if (values.agreement_minimo_s3 != null) {
+      patch.agreementMinimoS3 = String(values.agreement_minimo_s3).toUpperCase();
+    }
+    if (values.horarios_envio != null) {
+      patch.horariosEnvioJson = JSON.stringify(values.horarios_envio);
+    }
+
+    await cfg.update(patch);
     return this.getConfig();
   }
 
@@ -61,8 +94,7 @@ export class ConfigCatalogService {
   }
 
   async getRiskLevels() {
-    const cfg = await this.configModel.findOne();
-    if (!cfg) return [];
+    const cfg = await this.getOrCreateConfig();
     return [
       { nivel: 'LOW', min: 0, max: Number(cfg.riesgoBajo), accion: 'Monitorear', tiempoLimite: null, escalaA: null },
       { nivel: 'MEDIUM', min: Number(cfg.riesgoBajo), max: Number(cfg.riesgoMedio), accion: 'Notificar', tiempoLimite: '2h', escalaA: 'Supervisor' },
@@ -95,7 +127,17 @@ export class ConfigCatalogService {
     };
   }
 
-  async getDispatchSchedule() {
-    return [];
+  async getDispatchSchedule(): Promise<DispatchScheduleItem[]> {
+    const cfg = await this.getOrCreateConfig();
+    return parseDispatchSchedule(cfg.horariosEnvioJson);
+  }
+
+  async patchDispatchSchedule(items: DispatchScheduleItem[]) {
+    const cfg = await this.getOrCreateConfig();
+    await cfg.update({
+      horariosEnvioJson: JSON.stringify(items),
+      fechaActualizacion: new Date(),
+    });
+    return parseDispatchSchedule(cfg.horariosEnvioJson);
   }
 }

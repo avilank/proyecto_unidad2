@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Patch, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ConfigCatalogService } from './config-catalog.service';
+import type { DispatchScheduleItem } from './dispatch-schedule.defaults';
 
 @ApiTags('config')
 @Controller()
@@ -15,7 +16,7 @@ export class ConfigController {
 
   @Patch('config')
   @ApiOperation({ summary: 'Actualizar configuración' })
-  patchConfig(@Body() body: Record<string, string>) {
+  patchConfig(@Body() body: Record<string, unknown>) {
     return this.configCatalogService.patchConfig(body);
   }
 }
@@ -56,5 +57,11 @@ export class CatalogController {
   @ApiOperation({ summary: 'Horarios de envío' })
   getDispatchSchedule() {
     return this.configCatalogService.getDispatchSchedule();
+  }
+
+  @Patch('dispatch-schedule')
+  @ApiOperation({ summary: 'Actualizar horarios de envío' })
+  patchDispatchSchedule(@Body() body: { items: DispatchScheduleItem[] }) {
+    return this.configCatalogService.patchDispatchSchedule(body.items ?? []);
   }
 }

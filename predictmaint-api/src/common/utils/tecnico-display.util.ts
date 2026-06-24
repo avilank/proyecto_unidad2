@@ -47,5 +47,7 @@ export function tecnicoToResponse(t: Tecnico, maquinas: string[] = []) {
     nivelExperiencia: t.nivelExperiencia,
     ordenesHoy: 0,
     maquinas,
+    enviarWssp: t.enviarWssp !== false,
+    enviarCorreo: t.enviarCorreo === true,
   };
 }

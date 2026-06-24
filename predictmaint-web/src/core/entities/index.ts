@@ -57,6 +57,8 @@ export interface Technician {
   ordenesHoy: number;
   maquinas: string[];
   activo?: boolean;
+  enviarWssp?: boolean;
+  enviarCorreo?: boolean;
 }
 
 export interface CreateTechnicianPayload {
@@ -69,6 +71,8 @@ export interface CreateTechnicianPayload {
 
 export interface UpdateTechnicianPayload extends Partial<CreateTechnicianPayload> {
   estado?: EstadoTecnico;
+  enviarWssp?: boolean;
+  enviarCorreo?: boolean;
 }
 
 export interface Machine {

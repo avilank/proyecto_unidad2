@@ -7,7 +7,6 @@ import { RagDetailText } from '@/components/common/rag-detail-text';
 import { RagTechnicianResponsePanel } from '@/components/dashboard/rag-technician-response-panel';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { StatusPill } from '@/components/ui/status-pill';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMachine } from '@/presentation/hooks/useMachines';
@@ -18,9 +17,8 @@ import { EstadoOrden } from '@/core/types';
 import { KpiCard } from '@/components/ui/kpi-card';
 import { FAULT_ICONS, FAULT_KPI_TONE, FAULT_LABELS } from '@/lib/constants/fault-types';
 import { cn } from '@/lib/utils/cn';
+import { useSystemConfig } from '@/presentation/hooks/useSettings';
 import { Activity, Gauge, ShieldCheck, Target } from 'lucide-react';
-
-const UMBRAL_FALLA = 0.5;
 
 const TABS = [
   { key: 's1', label: '1 Predicción de Fallo' },
@@ -66,6 +64,8 @@ export function AnalysisView({
 
   const machine = useMachine(machineId);
   const orders = useOrders({ maquinaId: machineId, limit: 50 });
+  const systemConfig = useSystemConfig();
+  const umbralFalla = parseFloat(systemConfig.data?.umbral_ensemble_falla ?? '0.5') || 0.5;
 
   const orderItems = orders.data?.items ?? [];
 
@@ -107,7 +107,7 @@ export function AnalysisView({
 
   const s1Falla =
     Boolean(analysisOrder?.tipoFallo) ||
-    (confianzaLider != null && confianzaLider >= UMBRAL_FALLA) ||
+    (confianzaLider != null && confianzaLider >= umbralFalla) ||
     binary.data?.consenso === 'FALLA';
 
   const s2HasData =
@@ -228,7 +228,7 @@ export function AnalysisView({
       <div className="flex flex-col gap-4 px-6 py-5">
       {!s1Falla && !loading && binary.data && tab === 's1' && (
         <p className="rounded-md bg-surface-2 px-4 py-2 text-sm text-ink-muted">
-          S-1 no confirmó falla (ensemble &lt; {UMBRAL_FALLA}) — el pipeline se detiene aquí. Tabs 2 y 3
+          S-1 no confirmó falla (ensemble &lt; {umbralFalla}) — el pipeline se detiene aquí. Tabs 2 y 3
           permanecen bloqueados.
         </p>
       )}

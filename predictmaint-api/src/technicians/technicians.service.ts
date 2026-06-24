@@ -224,6 +224,8 @@ export class TechniciansService {
     await t.update({
       ...(dto.turno && { turno: dto.turno }),
       ...(dto.estado && { disponibilidad: dto.estado }),
+      ...(dto.enviarWssp !== undefined && { enviarWssp: dto.enviarWssp }),
+      ...(dto.enviarCorreo !== undefined && { enviarCorreo: dto.enviarCorreo }),
     });
     if (dto.telefono && t.usuario) {
       await t.usuario.update({ telefono: dto.telefono });
