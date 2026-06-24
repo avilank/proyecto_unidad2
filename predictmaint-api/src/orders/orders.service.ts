@@ -12,6 +12,7 @@ import { paginate, PaginationQueryDto } from '../common/dto/pagination.dto';
 import { generateOrderCodigo } from '../common/utils/id-generator.util';
 import { findMaquinaByCodigo } from '../common/utils/maquina.util';
 import { modeloSlug } from '../common/utils/modelo-ml.util';
+import { latestRagEstado } from '../common/utils/rag-estado.util';
 import { tecnicoIniciales, tecnicoNombre } from '../common/utils/tecnico-display.util';
 import { Alerta } from '../database/models/alerta.model';
 import { AnalisisFallo } from '../database/models/analisis-fallo.model';
@@ -22,6 +23,7 @@ import { Maquina } from '../database/models/maquina.model';
 import { ModeloMl } from '../database/models/modelo-ml.model';
 import { Orden } from '../database/models/orden.model';
 import { PrediccionFallo } from '../database/models/prediccion-fallo.model';
+import { RespuestaRecomendacion } from '../database/models/respuesta-recomendacion.model';
 import { SolucionAplicada } from '../database/models/solucion-aplicada.model';
 import { ObservacionTecnica } from '../database/models/observacion-tecnica.model';
 import { Tecnico } from '../database/models/tecnico.model';
@@ -61,6 +63,7 @@ const ORDER_INCLUDES_BASE = [
   },
   { model: SolucionAplicada },
   { model: ObservacionTecnica },
+  { model: RespuestaRecomendacion },
 ];
 
 function buildOrderIncludes(tipoFallo?: string) {
@@ -199,6 +202,7 @@ export class OrdersService {
       finalizadoEn: o.fechaFin ?? null,
       proximoReintentoAsignacion: o.proximoReintentoAsignacion?.toISOString() ?? null,
       intentosAsignacion: o.intentosAsignacion ?? 0,
+      ragEstado: latestRagEstado(o.respuestasRag),
       ...(o.maquina && { maquina: this.machinesService.toResponse(o.maquina) }),
       ...(o.tecnico && {
         tecnico: {

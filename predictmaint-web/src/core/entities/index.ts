@@ -136,6 +136,7 @@ export interface Order {
   finalizadoEn: string | null;
   proximoReintentoAsignacion?: string | null;
   intentosAsignacion?: number;
+  ragEstado?: 'pendiente' | 'aceptado' | 'rechazado';
   lectura?: SensorReading;
 }
 
@@ -170,6 +171,7 @@ export interface Alert {
   tecnico?: { id: number; nombre: string; iniciales: string } | null;
   proximoReintentoAsignacion?: string | null;
   estado: EstadoAlerta;
+  ragEstado?: 'pendiente' | 'aceptado' | 'rechazado';
   notificacionEnviada: boolean;
   creadoEn: string;
 }

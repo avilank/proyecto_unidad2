@@ -15,6 +15,7 @@ import type {
   Technician,
   User,
 } from '@/core/entities';
+import type { AnalyticsFilters } from '@/lib/types/analytics-filters';
 import type {
   DashboardApiResponse,
   FaultByType,
@@ -87,12 +88,16 @@ export interface ITechnicianRepository {
 
 export interface IAnalyticsRepository {
   getDashboardKpis(): Promise<DashboardApiResponse>;
-  getSummary(range?: string): Promise<AnalyticsSummary>;
+  getSummary(filters?: AnalyticsFilters): Promise<AnalyticsSummary>;
   getRepetitiveFaults(): Promise<RecurrentMachineFault[]>;
-  getMachineRecurrence(days?: number, minFallos?: number): Promise<MachineRecurrence[]>;
-  getUnattendedOrders(): Promise<UnattendedOrder[]>;
+  getMachineRecurrence(
+    days?: number,
+    minFallos?: number,
+    filters?: AnalyticsFilters,
+  ): Promise<MachineRecurrence[]>;
+  getUnattendedOrders(filters?: AnalyticsFilters): Promise<UnattendedOrder[]>;
   getNotificationLog(limit?: number): Promise<PaginatedResponse<NotificationLogEntry>>;
-  getFaultsByType(range?: string): Promise<FaultByType[]>;
+  getFaultsByType(filters?: AnalyticsFilters): Promise<FaultByType[]>;
   getSensorTrend(
     variable?: string,
     hours?: number,

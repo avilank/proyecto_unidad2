@@ -2,6 +2,7 @@ import { Controller, Get, Query, Res } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { AnalyticsService } from './analytics.service';
+import { parseAnalyticsFilters } from './dto/analytics-filters.dto';
 
 @ApiTags('analytics')
 @Controller('analytics')
@@ -16,20 +17,20 @@ export class AnalyticsController {
 
   @Get('summary')
   @ApiOperation({ summary: 'Resumen de efectividad' })
-  getSummary(@Query('range') range = 'week') {
-    return this.analyticsService.getSummary(range);
+  getSummary(@Query() query: Record<string, string>) {
+    return this.analyticsService.getSummary(parseAnalyticsFilters(query));
   }
 
   @Get('faults-by-type')
   @ApiOperation({ summary: 'Fallos por tipo' })
-  getFaultsByType(@Query('range') range = 'week') {
-    return this.analyticsService.getFaultsByType(range);
+  getFaultsByType(@Query() query: Record<string, string>) {
+    return this.analyticsService.getFaultsByType(parseAnalyticsFilters(query));
   }
 
   @Get('unattended')
   @ApiOperation({ summary: 'Órdenes sin atender' })
-  getUnattended() {
-    return this.analyticsService.getUnattended();
+  getUnattended(@Query() query: Record<string, string>) {
+    return this.analyticsService.getUnattended(parseAnalyticsFilters(query));
   }
 
   @Get('recurrent-machines')
@@ -43,10 +44,12 @@ export class AnalyticsController {
   getMachineRecurrence(
     @Query('days') days = '7',
     @Query('minFallos') minFallos = '2',
+    @Query() query: Record<string, string>,
   ) {
     return this.analyticsService.getMachineRecurrence(
       Number(days),
       Number(minFallos),
+      parseAnalyticsFilters(query),
     );
   }
 
@@ -58,8 +61,8 @@ export class AnalyticsController {
 
   @Get('prediction-validation')
   @ApiOperation({ summary: 'Historial: predicción vs. decisión del técnico' })
-  getPredictionValidation(@Query('range') range = 'month') {
-    return this.analyticsService.getPredictionValidation(range);
+  getPredictionValidation(@Query() query: Record<string, string>) {
+    return this.analyticsService.getPredictionValidation(parseAnalyticsFilters(query));
   }
 
   @Get('sensor-trend')

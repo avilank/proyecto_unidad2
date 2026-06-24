@@ -2,6 +2,7 @@
 
 import useSWR from 'swr';
 import { analyticsService } from '@/application/services/analytics.service';
+import type { AnalyticsFilters } from '@/lib/types/analytics-filters';
 
 export function useDashboard(options?: { poll?: boolean }) {
   return useSWR('/analytics/dashboard', () => analyticsService.getDashboard(), {
@@ -13,9 +14,9 @@ export function useDashboardKpis() {
   return useDashboard();
 }
 
-export function useFaultsByType(range = 'week') {
-  return useSWR(['/analytics/faults-by-type', range], () =>
-    analyticsService.getFaultsByType(range),
+export function useFaultsByType(filters: AnalyticsFilters) {
+  return useSWR(['/analytics/faults-by-type', filters], () =>
+    analyticsService.getFaultsByType(filters),
   );
 }
 
@@ -25,19 +26,19 @@ export function useSensorTrend(variable = 'rotationalSpeed', hours = 24, maquina
   );
 }
 
-export function useAnalyticsSummary(range = 'week') {
-  return useSWR(['/analytics/summary', range], () => analyticsService.getSummary(range));
+export function useAnalyticsSummary(filters: AnalyticsFilters) {
+  return useSWR(['/analytics/summary', filters], () => analyticsService.getSummary(filters));
 }
 
-export function useUnattendedOrders() {
-  return useSWR('/analytics/unattended', () => analyticsService.getUnattendedOrders(), {
+export function useUnattendedOrders(filters: AnalyticsFilters) {
+  return useSWR(['/analytics/unattended', filters], () => analyticsService.getUnattendedOrders(filters), {
     refreshInterval: 15000,
   });
 }
 
-export function useMachineRecurrence(days = 7, minFallos = 2) {
-  return useSWR(['/analytics/machine-recurrence', days, minFallos], () =>
-    analyticsService.getMachineRecurrence(days, minFallos),
+export function useMachineRecurrence(days = 7, minFallos = 2, filters: AnalyticsFilters) {
+  return useSWR(['/analytics/machine-recurrence', days, minFallos, filters], () =>
+    analyticsService.getMachineRecurrence(days, minFallos, filters),
   );
 }
 
@@ -58,9 +59,9 @@ export function useAvailability() {
   });
 }
 
-export function usePredictionValidation(range = 'month') {
-  return useSWR(['/analytics/prediction-validation', range], () =>
-    analyticsService.getPredictionValidation(range),
+export function usePredictionValidation(filters: AnalyticsFilters) {
+  return useSWR(['/analytics/prediction-validation', filters], () =>
+    analyticsService.getPredictionValidation(filters),
   );
 }
 

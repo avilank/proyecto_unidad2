@@ -42,9 +42,9 @@ export function RagEffectivenessPanel({
     <Card className="h-full min-h-[320px]">
       <CardHeader>
         <CardTitle>Efectividad del sistema</CardTitle>
-        <p className="text-xs text-ink-muted">
+        {/* <p className="text-xs text-ink-muted">
             Solo fallas con S-2 y técnico asignado · cada orden en una sola categoría (suman 100 %)
-        </p>
+        </p> */}
       </CardHeader>
       <CardContent className="space-y-5">
         {isLoading ? (

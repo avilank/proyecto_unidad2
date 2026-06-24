@@ -24,9 +24,9 @@ export function RecurrencePanel({
       <CardHeader>
         <div>
           <CardTitle>Máquinas con más fallos recurrentes</CardTitle>
-          <p className="mt-1 text-xs text-ink-muted">
+          {/* <p className="mt-1 text-xs text-ink-muted">
             Esta semana · solo máquinas con {minFallos} o más fallos confirmados
-          </p>
+          </p> */}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">

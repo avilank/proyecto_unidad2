@@ -63,8 +63,7 @@ const FLOW_STEPS = [
 ];
 
 const CARD_BG_FAULT = 'rgba(245, 158, 11, 0.06)';
-const CARD_BORDER_FAULT = 'rgba(245, 158, 11, 0.35)';
-const CARD_BORDER_OK = 'rgba(255, 255, 255, 0.12)';
+const CARD_BG_OK = 'rgba(255, 255, 255, 0.02)';
 const METRIC_BG_FAULT = 'rgba(245, 158, 11, 0.1)';
 const METRIC_BG_NEUTRAL = 'rgba(255, 255, 255, 0.025)';
 
@@ -371,8 +370,7 @@ function MachineLiveCard({
       className="group relative overflow-hidden rounded-xl p-4 mt-6 transition-colors duration-300 animate-slide-in-left"
       style={{
         animationDelay: `${index * 100}ms`,
-        border: `1px solid ${fault ? CARD_BORDER_FAULT : CARD_BORDER_OK}`,
-        ...(fault ? { backgroundColor: CARD_BG_FAULT } : {}),
+        backgroundColor: fault ? CARD_BG_FAULT : CARD_BG_OK,
       }}
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -499,45 +497,15 @@ function LiveMetric({
 function alertCardStyles(nivel?: string) {
   switch (nivel?.toUpperCase()) {
     case 'CRITICAL':
-      return {
-        border: 'rgba(239, 68, 68, 0.55)',
-        background: 'rgba(239, 68, 68, 0.07)',
-      };
+      return { background: 'rgba(239, 68, 68, 0.08)' };
     case 'HIGH':
-      return {
-        border: 'rgba(251, 146, 60, 0.55)',
-        background: 'rgba(251, 146, 60, 0.07)',
-      };
+      return { background: 'rgba(251, 146, 60, 0.08)' };
     case 'MEDIUM':
-      return {
-        border: 'rgba(245, 158, 11, 0.55)',
-        background: 'rgba(245, 158, 11, 0.07)',
-      };
+      return { background: 'rgba(245, 158, 11, 0.08)' };
     case 'LOW':
-      return {
-        border: 'rgba(34, 197, 94, 0.5)',
-        background: 'rgba(34, 197, 94, 0.07)',
-      };
+      return { background: 'rgba(34, 197, 94, 0.08)' };
     default:
-      return {
-        border: CARD_BORDER_FAULT,
-        background: CARD_BG_FAULT,
-      };
-  }
-}
-
-function alertBadgeVariant(nivel?: string): 'critical' | 'high' | 'warning' | 'success' | 'default' {
-  switch (nivel?.toUpperCase()) {
-    case 'CRITICAL':
-      return 'critical';
-    case 'HIGH':
-      return 'high';
-    case 'MEDIUM':
-      return 'warning';
-    case 'LOW':
-      return 'success';
-    default:
-      return 'warning';
+      return { background: CARD_BG_FAULT };
   }
 }
 
@@ -548,14 +516,11 @@ function ActiveAlertCard({ alert }: { alert: Alert }) {
   return (
     <div
       className="rounded-lg p-4"
-      style={{
-        border: `1px solid ${cardStyle.border}`,
-        backgroundColor: cardStyle.background,
-      }}
+      style={{ backgroundColor: cardStyle.background }}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-sm font-bold text-ink">{alert.id}</span>
-        <Badge variant={alertBadgeVariant(alert.nivel)}>Falla detectada</Badge>
+        <FaultStatusBadges alert={alert} />
       </div>
       <p className="mt-1 text-xs text-ink-muted">
         {alert.maquinaId} · {timeAgo(alert.creadoEn)}
@@ -669,10 +634,28 @@ function buildActiveFaultCountsByType(alerts: Alert[]): Record<TipoFallo, number
 }
 
 function MachineAlertBadge({ alert }: { alert?: Alert }) {
-  if (hasActiveFault(alert)) {
-    return <Badge variant="warning">Falla detectada</Badge>;
+  return <FaultStatusBadges alert={alert} compact />;
+}
+
+function FaultStatusBadges({
+  alert,
+  compact = false,
+}: {
+  alert?: Alert;
+  compact?: boolean;
+}) {
+  if (!hasActiveFault(alert)) {
+    return <Badge variant="success">Sin incidencia</Badge>;
   }
-  return <Badge variant="success">Sin incidencia</Badge>;
+
+  return (
+    <div className={cn('flex flex-wrap gap-1.5', compact ? 'justify-end' : 'justify-end')}>
+      <Badge variant="warning">Falla detectada</Badge>
+      {alert?.ragEstado === 'rechazado' && (
+        <Badge variant="danger">Plan rechazado</Badge>
+      )}
+    </div>
+  );
 }
 
 function buildAlertNote(machine: Machine, alert?: Alert): string {
@@ -686,6 +669,7 @@ function buildAlertNote(machine: Machine, alert?: Alert): string {
   }
 
   const parts = ['Falla detectada'];
+  if (alert?.ragEstado === 'rechazado') parts.push('Plan RAG rechazado');
   if (alert?.tipoFallo) parts.push(alert.tipoFallo);
   if (alert?.reglaCodigo) parts.push(alert.reglaCodigo);
   if (alert?.tecnico) parts.push(`Téc: ${shortName(alert.tecnico.nombre)}`);

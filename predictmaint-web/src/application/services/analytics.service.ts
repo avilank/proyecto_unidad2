@@ -1,4 +1,5 @@
 import type { AnalyticsSummary } from '@/core/entities';
+import type { AnalyticsFilters } from '@/lib/types/analytics-filters';
 import type {
   DashboardApiResponse,
   FaultByType,
@@ -14,28 +15,32 @@ export class AnalyticsService {
     return analyticsRepository.getDashboardKpis();
   }
 
-  getSummary(range = 'week'): Promise<AnalyticsSummary> {
-    return analyticsRepository.getSummary(range);
+  getSummary(filters: AnalyticsFilters = { range: 'week' }): Promise<AnalyticsSummary> {
+    return analyticsRepository.getSummary(filters);
   }
 
   getRecurrentMachines(): Promise<RecurrentMachineFault[]> {
     return analyticsRepository.getRepetitiveFaults();
   }
 
-  getMachineRecurrence(days = 7, minFallos = 2): Promise<MachineRecurrence[]> {
-    return analyticsRepository.getMachineRecurrence(days, minFallos);
+  getMachineRecurrence(
+    days = 7,
+    minFallos = 2,
+    filters: AnalyticsFilters = { range: 'week' },
+  ): Promise<MachineRecurrence[]> {
+    return analyticsRepository.getMachineRecurrence(days, minFallos, filters);
   }
 
-  getUnattendedOrders() {
-    return analyticsRepository.getUnattendedOrders();
+  getUnattendedOrders(filters: AnalyticsFilters = { range: 'week' }) {
+    return analyticsRepository.getUnattendedOrders(filters);
   }
 
   getNotificationLog(limit = 50): Promise<PaginatedResponse<NotificationLogEntry>> {
     return analyticsRepository.getNotificationLog(limit);
   }
 
-  getFaultsByType(range = 'week'): Promise<FaultByType[]> {
-    return analyticsRepository.getFaultsByType(range);
+  getFaultsByType(filters: AnalyticsFilters = { range: 'week' }): Promise<FaultByType[]> {
+    return analyticsRepository.getFaultsByType(filters);
   }
 
   getSensorTrend(variable = 'rotationalSpeed', hours = 24, maquinaId?: string) {
@@ -46,8 +51,8 @@ export class AnalyticsService {
     return analyticsRepository.getAvailability();
   }
 
-  getPredictionValidation(range = 'month') {
-    return analyticsRepository.getPredictionValidation(range);
+  getPredictionValidation(filters: AnalyticsFilters = { range: 'month' }) {
+    return analyticsRepository.getPredictionValidation(filters);
   }
 }
 
