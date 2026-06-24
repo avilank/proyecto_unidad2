@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import {
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsOptional,
@@ -37,4 +38,14 @@ export class UpdateTechnicianDto extends PartialType(CreateTechnicianDto) {
   @IsOptional()
   @IsEnum(EstadoTecnico)
   estado?: EstadoTecnico;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  enviarWssp?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  enviarCorreo?: boolean;
 }

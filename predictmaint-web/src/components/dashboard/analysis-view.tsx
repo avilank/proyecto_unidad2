@@ -4,23 +4,21 @@ import { useEffect, useMemo, useState } from 'react';
 import type { BinaryPrediction, MulticlassPrediction, Order, SensorReading } from '@/core/entities';
 import { Topbar } from '@/components/common/topbar';
 import { RagDetailText } from '@/components/common/rag-detail-text';
+import { RagTechnicianResponsePanel } from '@/components/dashboard/rag-technician-response-panel';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { StatusPill } from '@/components/ui/status-pill';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMachine } from '@/presentation/hooks/useMachines';
 import { useOrders } from '@/presentation/hooks/useOrders';
 import { useBinaryPredictions, useMulticlassPredictions } from '@/presentation/hooks/usePredictions';
 import { useRagPlan } from '@/presentation/hooks/useRag';
-import { ragService } from '@/application/services/rag.service';
 import { EstadoOrden } from '@/core/types';
 import { KpiCard } from '@/components/ui/kpi-card';
 import { FAULT_ICONS, FAULT_KPI_TONE, FAULT_LABELS } from '@/lib/constants/fault-types';
 import { cn } from '@/lib/utils/cn';
+import { useSystemConfig } from '@/presentation/hooks/useSettings';
 import { Activity, Gauge, ShieldCheck, Target } from 'lucide-react';
-
-const UMBRAL_FALLA = 0.5;
 
 const TABS = [
   { key: 's1', label: '1 Predicción de Fallo' },
@@ -66,6 +64,8 @@ export function AnalysisView({
 
   const machine = useMachine(machineId);
   const orders = useOrders({ maquinaId: machineId, limit: 50 });
+  const systemConfig = useSystemConfig();
+  const umbralFalla = parseFloat(systemConfig.data?.umbral_ensemble_falla ?? '0.5') || 0.5;
 
   const orderItems = orders.data?.items ?? [];
 
@@ -107,7 +107,7 @@ export function AnalysisView({
 
   const s1Falla =
     Boolean(analysisOrder?.tipoFallo) ||
-    (confianzaLider != null && confianzaLider >= UMBRAL_FALLA) ||
+    (confianzaLider != null && confianzaLider >= umbralFalla) ||
     binary.data?.consenso === 'FALLA';
 
   const s2HasData =
@@ -228,7 +228,7 @@ export function AnalysisView({
       <div className="flex flex-col gap-4 px-6 py-5">
       {!s1Falla && !loading && binary.data && tab === 's1' && (
         <p className="rounded-md bg-surface-2 px-4 py-2 text-sm text-ink-muted">
-          S-1 no confirmó falla (ensemble &lt; {UMBRAL_FALLA}) — el pipeline se detiene aquí. Tabs 2 y 3
+          S-1 no confirmó falla (ensemble &lt; {umbralFalla}) — el pipeline se detiene aquí. Tabs 2 y 3
           permanecen bloqueados.
         </p>
       )}
@@ -581,43 +581,9 @@ function RagTab({
   };
   onRegenerated?: () => void;
 }) {
-  const [rejectComment, setRejectComment] = useState('');
-  const [confirmAcceptOpen, setConfirmAcceptOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-
   const tipoFallo = data?.tipoFallo ?? order?.tipoFallo ?? '—';
   const orderEstado = order?.estado ?? EstadoOrden.PENDIENTE;
   const ragEstado = data?.estado ?? 'pendiente';
-  const canRespond = orderEstado === EstadoOrden.PENDIENTE && ragEstado === 'pendiente';
-  const isFinalized = orderEstado === EstadoOrden.FINALIZADO;
-
-  const runAction = async (fn: () => Promise<unknown>) => {
-    setBusy(true);
-    setActionError(null);
-    try {
-      await fn();
-      onRegenerated?.();
-    } catch {
-      setActionError('No se pudo completar la acción. Intenta de nuevo.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleAccept = () =>
-    runAction(async () => {
-      if (!orderId) return;
-      await ragService.accept(orderId);
-      setConfirmAcceptOpen(false);
-    });
-
-  const handleReject = () =>
-    runAction(async () => {
-      if (!orderId) return;
-      await ragService.reject(orderId, rejectComment.trim() || undefined);
-      setRejectComment('');
-    });
 
   if (isLoading) return <Skeleton className="h-[380px] w-full" />;
 
@@ -683,74 +649,14 @@ function RagTab({
         </Card>
 
         <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Respuesta del Técnico</CardTitle>
-              {/* <p className="text-xs text-ink-muted">
-                Orden {orderId ?? '—'} • Máquina {order?.maquinaId ?? '—'} • Fallo {tipoFallo} •{' '}
-                {orderEstado.replace('_', ' ')}
-              </p> */}
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {canRespond && (
-                <p className="text-sm font-medium text-warning">Pendiente de respuesta</p>
-              )}
-              {ragEstado === 'aceptado' && !isFinalized && (
-                <p className="text-sm font-medium text-success">Recomendaciones RAG aceptadas</p>
-              )}
-              {ragEstado === 'rechazado' && (
-                <p className="text-sm font-medium text-warning">
-                  Rechazado — análisis manual pendiente
-                </p>
-              )}
-              {isFinalized && (
-                <p className="text-sm font-medium text-success">Orden finalizada</p>
-              )}
-
-              {canRespond && (
-                <>
-                  <button
-                    type="button"
-                    disabled={busy || !orderId}
-                    onClick={() => setConfirmAcceptOpen(true)}
-                    className="flex w-full flex-col items-center rounded-lg bg-success px-4 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-success/90 disabled:opacity-50"
-                  >
-                    <span>Aceptar recomendaciones RAG</span>
-                  </button>
-
-                  <div className="space-y-2">
-                    <label className="text-xs text-ink-muted" htmlFor="reject-comment">
-                      Comentario (rechazo o análisis manual)
-                    </label>
-                    <textarea
-                      id="reject-comment"
-                      rows={3}
-                      value={rejectComment}
-                      onChange={(e) => setRejectComment(e.target.value)}
-                      placeholder="Indica por qué rechazas o qué revisarás manualmente…"
-                      className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-                    />
-                    <Button
-                      variant="secondary"
-                      fullWidth
-                      disabled={busy || !orderId}
-                      onClick={handleReject}
-                    >
-                      <span className="flex flex-col items-center gap-0.5">
-                        <span>Rechazar / Analizar manualmente</span>
-                      </span>
-                    </Button>
-                  </div>
-                </>
-              )}
-
-              {!canRespond && !isFinalized && ragEstado === 'rechazado' && (
-                <p className="text-xs text-ink-muted">
-                  El técnico rechazó el plan. La orden permanece pendiente hasta nueva decisión.
-                </p>
-              )}
-            </CardContent>
-          </Card>
+          <RagTechnicianResponsePanel
+            orderId={orderId}
+            orderEstado={orderEstado}
+            ragEstado={ragEstado}
+            maquinaId={order?.maquinaId}
+            tipoFallo={tipoFallo !== '—' ? tipoFallo : order?.tipoFallo}
+            onUpdated={onRegenerated}
+          />
 
           {/* <Card>
             <CardHeader>
@@ -882,53 +788,6 @@ function RagTab({
           */}
         </div>
       </div>
-
-      {actionError && <p className="text-sm text-danger">{actionError}</p>}
-
-      {confirmAcceptOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-          role="presentation"
-          onClick={() => !busy && setConfirmAcceptOpen(false)}
-        >
-          <Card
-            className="w-full max-w-md shadow-pop"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <CardHeader>
-              <CardTitle>Confirmar acción</CardTitle>
-              <p className="text-xs text-ink-muted">
-                Orden {orderId} • Máquina {order?.maquinaId} • Fallo {tipoFallo}
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-ink-soft">
-                ¿Aceptas las recomendaciones RAG? La orden pasará automáticamente a{' '}
-                <strong className="text-ink">En Progreso</strong>. Recibirás notificación de
-                seguimiento en 30 minutos.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={handleAccept}
-                  className="flex-1 rounded-md bg-success px-4 py-2.5 text-sm font-semibold text-white hover:bg-success/90 disabled:opacity-50"
-                >
-                  Confirmar
-                </button>
-                <Button
-                  variant="secondary"
-                  className="flex-1"
-                  disabled={busy}
-                  onClick={() => setConfirmAcceptOpen(false)}
-                >
-                  Cancelar
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
     </div>
   );
 }

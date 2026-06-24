@@ -57,6 +57,8 @@ export interface Technician {
   ordenesHoy: number;
   maquinas: string[];
   activo?: boolean;
+  enviarWssp?: boolean;
+  enviarCorreo?: boolean;
 }
 
 export interface CreateTechnicianPayload {
@@ -69,6 +71,8 @@ export interface CreateTechnicianPayload {
 
 export interface UpdateTechnicianPayload extends Partial<CreateTechnicianPayload> {
   estado?: EstadoTecnico;
+  enviarWssp?: boolean;
+  enviarCorreo?: boolean;
 }
 
 export interface Machine {
@@ -136,6 +140,7 @@ export interface Order {
   finalizadoEn: string | null;
   proximoReintentoAsignacion?: string | null;
   intentosAsignacion?: number;
+  ragEstado?: 'pendiente' | 'aceptado' | 'rechazado';
   lectura?: SensorReading;
 }
 
@@ -170,6 +175,7 @@ export interface Alert {
   tecnico?: { id: number; nombre: string; iniciales: string } | null;
   proximoReintentoAsignacion?: string | null;
   estado: EstadoAlerta;
+  ragEstado?: 'pendiente' | 'aceptado' | 'rechazado';
   notificacionEnviada: boolean;
   creadoEn: string;
 }

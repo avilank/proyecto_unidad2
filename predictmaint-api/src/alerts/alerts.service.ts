@@ -5,6 +5,7 @@ import { EstadoAlerta } from '../common/enums';
 import { paginate, PaginationQueryDto } from '../common/dto/pagination.dto';
 import { findMaquinaByCodigo } from '../common/utils/maquina.util';
 import { modeloSlug } from '../common/utils/modelo-ml.util';
+import { latestRagEstado } from '../common/utils/rag-estado.util';
 import { tecnicoIniciales, tecnicoNombre } from '../common/utils/tecnico-display.util';
 import { Alerta } from '../database/models/alerta.model';
 import { AnalisisFallo } from '../database/models/analisis-fallo.model';
@@ -15,6 +16,7 @@ import { Orden } from '../database/models/orden.model';
 import { PrediccionFallo } from '../database/models/prediccion-fallo.model';
 import { Tecnico } from '../database/models/tecnico.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
+import { RespuestaRecomendacion } from '../database/models/respuesta-recomendacion.model';
 import { Usuario } from '../database/models/usuario.model';
 
 const ALERT_INCLUDES = [
@@ -22,6 +24,7 @@ const ALERT_INCLUDES = [
   {
     model: Orden,
     include: [
+      { model: RespuestaRecomendacion },
       {
         model: AnalisisFallo,
         include: [{ model: ClasificacionFallo, include: [{ model: TipoFallo }] }],
@@ -84,6 +87,7 @@ export class AlertsService {
       proximoReintentoAsignacion:
         a.orden?.proximoReintentoAsignacion?.toISOString() ?? null,
       estado: a.estado,
+      ragEstado: latestRagEstado(a.orden?.respuestasRag),
       notificacionEnviada: false,
       creadoEn: a.fechaAlerta,
     };

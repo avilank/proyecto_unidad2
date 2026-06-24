@@ -23,8 +23,13 @@ import { Tecnico } from '../database/models/tecnico.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
 import { Usuario } from '../database/models/usuario.model';
 import { findMaquinaByCodigo } from '../common/utils/maquina.util';
+import { latestRagEstado } from '../common/utils/rag-estado.util';
 import { tecnicoNombre } from '../common/utils/tecnico-display.util';
 import { OrdersService } from '../orders/orders.service';
+import {
+  ParsedAnalyticsFilters,
+  resolveDateRange,
+} from './dto/analytics-filters.dto';
 
 function tecnicoNombreCorto(nombre: string): string {
   const parts = nombre.trim().split(/\s+/).filter(Boolean);
@@ -61,15 +66,19 @@ export class AnalyticsService {
   }
 
   private rangeStart(range: string) {
-    const now = new Date();
-    const days = range === 'month' ? 30 : 7;
-    return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    return resolveDateRange({ range }).from;
   }
 
   /** Falla real = S-2 clasificó tipo + técnico asignado (intervención humana). */
-  private fallaConfirmadaIncludes() {
+  private fallaConfirmadaIncludes(tipoFallo?: string) {
+    const tipoFalloInclude = tipoFallo
+      ? { model: TipoFallo, where: { codigo: tipoFallo }, required: true as const }
+      : { model: TipoFallo, required: false as const };
+
     return [
       { model: SolucionAplicada, required: false },
+      { model: RespuestaRecomendacion, required: false },
+      { model: ObservacionTecnica, required: false },
       {
         model: AnalisisFallo,
         required: true,
@@ -78,22 +87,63 @@ export class AnalyticsService {
             model: ClasificacionFallo,
             where: { esLider: true },
             required: true,
-            include: [{ model: TipoFallo, required: false }],
+            include: [tipoFalloInclude],
           },
         ],
       },
     ];
   }
 
-  private findOrdenesFallaConfirmada(from: Date) {
-    return this.ordenModel.findAll({
-      where: {
-        fechaCreacion: { [Op.gte]: from },
-        idTecnico: { [Op.ne]: null },
-      },
-      include: this.fallaConfirmadaIncludes(),
+  private tecnicoDecision(o: Orden): 'aceptada' | 'rechazada' | null {
+    const obs = [...(o.observacionesTecnica ?? [])].sort(
+      (a, b) =>
+        new Date(b.fechaRegistro).getTime() - new Date(a.fechaRegistro).getTime(),
+    )[0];
+    if (!obs) return null;
+    const rechazada =
+      obs.decision === DecisionPrediccion.RECHAZADA ||
+      o.estado === EstadoOrden.RECHAZADA ||
+      obs.esPrediccionCorrecta === false;
+    return rechazada ? 'rechazada' : 'aceptada';
+  }
+
+  private applyAnalyticsFilters(
+    ordenes: Orden[],
+    filters: ParsedAnalyticsFilters,
+  ): Orden[] {
+    return ordenes.filter((o) => {
+      if (filters.respuestaRag) {
+        if (latestRagEstado(o.respuestasRag) !== filters.respuestaRag) return false;
+      }
+      if (filters.decision) {
+        if (this.tecnicoDecision(o) !== filters.decision) return false;
+      }
+      return true;
+    });
+  }
+
+  private async findOrdenesFallaConfirmada(
+    filters: ParsedAnalyticsFilters = { range: 'week' },
+  ) {
+    const { from, to } = resolveDateRange(filters);
+    const where: Record<string, unknown> = {
+      fechaCreacion: { [Op.gte]: from, [Op.lte]: to },
+    };
+    if (filters.tecnicoId) {
+      where.idTecnico = filters.tecnicoId;
+    } else {
+      where.idTecnico = { [Op.ne]: null };
+    }
+    if (filters.estado) {
+      where.estado = filters.estado;
+    }
+
+    const rows = await this.ordenModel.findAll({
+      where,
+      include: this.fallaConfirmadaIncludes(filters.tipoFallo),
       order: [['fechaCreacion', 'DESC']],
     });
+    return this.applyAnalyticsFilters(rows, filters);
   }
 
   async getDashboard() {
@@ -225,9 +275,8 @@ export class AnalyticsService {
     };
   }
 
-  async getSummary(range: string) {
-    const from = this.rangeStart(range);
-    const ordenes = await this.findOrdenesFallaConfirmada(from);
+  async getSummary(filters: ParsedAnalyticsFilters = { range: 'week' }) {
+    const ordenes = await this.findOrdenesFallaConfirmada(filters);
 
     let conRag = 0;
     let sinRag = 0;
@@ -255,13 +304,12 @@ export class AnalyticsService {
       sinRag,
       pctConRag: ordenes.length ? Math.round((conRag / ordenes.length) * 100) : 0,
       sinAtender,
-      range,
+      range: filters.range,
     };
   }
 
-  async getFaultsByType(range: string) {
-    const from = this.rangeStart(range);
-    const ordenes = await this.findOrdenesFallaConfirmada(from);
+  async getFaultsByType(filters: ParsedAnalyticsFilters = { range: 'week' }) {
+    const ordenes = await this.findOrdenesFallaConfirmada(filters);
     const counts: Record<string, number> = {};
     for (const o of ordenes) {
       const lider = o.analisis?.clasificaciones?.[0];
@@ -286,9 +334,22 @@ export class AnalyticsService {
     return rows.map((o) => this.ordersService.toResponse(o));
   }
 
-  async getUnattended() {
+  async getUnattended(filters: ParsedAnalyticsFilters = { range: 'week' }) {
+    const { from, to } = resolveDateRange(filters);
+    const where: Record<string, unknown> = {
+      estado: EstadoOrden.PENDIENTE,
+      fechaCreacion: { [Op.gte]: from, [Op.lte]: to },
+    };
+    if (filters.tecnicoId) {
+      where.idTecnico = filters.tecnicoId;
+    }
+
+    const tipoFalloInclude = filters.tipoFallo
+      ? { model: TipoFallo, where: { codigo: filters.tipoFallo }, required: true as const }
+      : { model: TipoFallo, required: false as const };
+
     const rows = await this.ordenModel.findAll({
-      where: { estado: EstadoOrden.PENDIENTE },
+      where,
       limit: 50,
       order: [['fechaCreacion', 'ASC']],
       include: [
@@ -297,7 +358,19 @@ export class AnalyticsService {
           model: Tecnico,
           include: [{ model: Usuario, attributes: ['nombres', 'apellidos'] }],
         },
-        { model: AnalisisFallo, attributes: ['nivelRiesgo'] },
+        {
+          model: AnalisisFallo,
+          attributes: ['nivelRiesgo'],
+          required: Boolean(filters.tipoFallo),
+          include: [
+            {
+              model: ClasificacionFallo,
+              where: { esLider: true },
+              required: Boolean(filters.tipoFallo),
+              include: [tipoFalloInclude],
+            },
+          ],
+        },
         {
           model: Alerta,
           required: false,
@@ -306,13 +379,14 @@ export class AnalyticsService {
         {
           model: RespuestaRecomendacion,
           required: false,
-          attributes: ['idRespuesta', 'decision'],
+          attributes: ['idRespuesta', 'decision', 'fechaRespuesta'],
         },
+        { model: ObservacionTecnica, required: false },
       ],
     });
 
     const now = Date.now();
-    return rows
+    return this.applyAnalyticsFilters(rows, filters)
       .filter((o) => !o.respuestasRag?.length)
       .slice(0, 20)
       .map((o) => {
@@ -332,22 +406,51 @@ export class AnalyticsService {
       });
   }
 
-  async getMachineRecurrence(days = 7, minFallos = 2) {
-    const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  async getMachineRecurrence(
+    days = 7,
+    minFallos = 2,
+    filters: ParsedAnalyticsFilters = { range: 'week' },
+  ) {
+    const { from, to } = filters.desde
+      ? resolveDateRange(filters)
+      : { from: new Date(Date.now() - days * 24 * 60 * 60 * 1000), to: new Date() };
+
+    const where: Record<string, unknown> = {
+      fechaCreacion: { [Op.gte]: from, [Op.lte]: to },
+    };
+    if (filters.tecnicoId) where.idTecnico = filters.tecnicoId;
+
+    const tipoFalloInclude = filters.tipoFallo
+      ? { model: TipoFallo, where: { codigo: filters.tipoFallo }, required: true as const }
+      : { model: TipoFallo, required: false as const };
+
     const ordenes = await this.ordenModel.findAll({
-      where: { fechaCreacion: { [Op.gte]: from } },
+      where,
       include: [
         { model: Maquina, attributes: ['codigo'] },
         {
           model: AnalisisFallo,
           where: { prediccion: PrediccionBinaria.FALLA },
           required: true,
+          include: [
+            {
+              model: ClasificacionFallo,
+              where: { esLider: true },
+              required: false,
+              include: [tipoFalloInclude],
+            },
+          ],
         },
+        { model: RespuestaRecomendacion, required: false },
+        { model: ObservacionTecnica, required: false },
       ],
     });
 
+    const filtered = this.applyAnalyticsFilters(ordenes, filters);
+
     const counts = new Map<string, number>();
-    for (const o of ordenes) {
+    const ventanaDias = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)));
+    for (const o of filtered) {
       const codigo = o.maquina?.codigo;
       if (!codigo) continue;
       counts.set(codigo, (counts.get(codigo) ?? 0) + 1);
@@ -470,13 +573,24 @@ export class AnalyticsService {
    * (falla / tipo de falla) contra la decisión del técnico (aceptada / rechazada).
    * Solo incluye órdenes con técnico asignado y observación técnica registrada.
    */
-  async getPredictionValidation(range: string) {
-    const from = this.rangeStart(range);
+  async getPredictionValidation(filters: ParsedAnalyticsFilters = { range: 'month' }) {
+    const { from, to } = resolveDateRange(filters);
+    const where: Record<string, unknown> = {
+      fechaCreacion: { [Op.gte]: from, [Op.lte]: to },
+      idTecnico: filters.tecnicoId ? filters.tecnicoId : { [Op.ne]: null },
+    };
+    if (filters.estado) where.estado = filters.estado;
+    if (filters.maquinaId) {
+      const maquina = await findMaquinaByCodigo(filters.maquinaId);
+      if (maquina) where.idMaquina = maquina.idMaquina;
+    }
+
+    const tipoFalloInclude = filters.tipoFallo
+      ? { model: TipoFallo, where: { codigo: filters.tipoFallo }, required: true as const }
+      : { model: TipoFallo, required: false as const };
+
     const ordenes = await this.ordenModel.findAll({
-      where: {
-        fechaCreacion: { [Op.gte]: from },
-        idTecnico: { [Op.ne]: null },
-      },
+      where,
       include: [
         { model: Maquina, attributes: ['codigo'] },
         {
@@ -484,6 +598,7 @@ export class AnalyticsService {
           include: [{ model: Usuario, attributes: ['nombres', 'apellidos'] }],
         },
         { model: ObservacionTecnica, required: true },
+        { model: RespuestaRecomendacion, required: false },
         {
           model: AnalisisFallo,
           required: true,
@@ -492,7 +607,7 @@ export class AnalyticsService {
               model: ClasificacionFallo,
               where: { esLider: true },
               required: false,
-              include: [{ model: TipoFallo, required: false }],
+              include: [tipoFalloInclude],
             },
           ],
         },
@@ -500,7 +615,9 @@ export class AnalyticsService {
       order: [['fechaCreacion', 'DESC']],
     });
 
-    return ordenes.map((o) => {
+    const filtered = this.applyAnalyticsFilters(ordenes, filters);
+
+    return filtered.map((o) => {
       const obs = [...(o.observacionesTecnica ?? [])].sort(
         (a, b) =>
           new Date(b.fechaRegistro).getTime() - new Date(a.fechaRegistro).getTime(),

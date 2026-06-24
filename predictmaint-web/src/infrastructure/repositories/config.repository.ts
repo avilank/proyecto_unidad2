@@ -1,14 +1,26 @@
-import type { AppConfig, RagSource } from '@/core/entities';
-import type { IConfigRepository } from '@/core/interfaces';
+import type { RagSource } from '@/core/entities';
+import type { DispatchScheduleItem, SystemConfigResponse } from '@/lib/types/settings';
 import { apiClient } from '@/infrastructure/http/clients/apiClient';
 
-export class ConfigRepository implements IConfigRepository {
-  getConfig(): Promise<AppConfig> {
-    return apiClient.get<AppConfig>('/config');
+export class ConfigRepository {
+  getConfig(): Promise<SystemConfigResponse> {
+    return apiClient.get<SystemConfigResponse>('/config');
+  }
+
+  patchConfig(body: Record<string, unknown>): Promise<SystemConfigResponse> {
+    return apiClient.patch<SystemConfigResponse>('/config', body);
   }
 
   getRagSources(): Promise<RagSource[]> {
     return apiClient.get<RagSource[]>('/catalog/rag-sources');
+  }
+
+  getDispatchSchedule(): Promise<DispatchScheduleItem[]> {
+    return apiClient.get<DispatchScheduleItem[]>('/catalog/dispatch-schedule');
+  }
+
+  patchDispatchSchedule(items: DispatchScheduleItem[]): Promise<DispatchScheduleItem[]> {
+    return apiClient.patch<DispatchScheduleItem[]>('/catalog/dispatch-schedule', { items });
   }
 }
 

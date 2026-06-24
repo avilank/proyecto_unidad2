@@ -27,4 +27,13 @@ export class ConfiguracionAlertas extends Model {
 
   @Column({ type: DataType.DATE, allowNull: false, defaultValue: DataType.NOW })
   declare fechaActualizacion: Date;
+
+  @Column({ type: DataType.DECIMAL(4, 2), allowNull: false, defaultValue: 0.5 })
+  declare umbralEnsembleFalla: number;
+
+  @Column({ type: DataType.STRING(10), allowNull: false, defaultValue: 'MEDIO' })
+  declare agreementMinimoS3: string;
+
+  @Column(DataType.TEXT)
+  declare horariosEnvioJson?: string;
 }

@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   LogOut,
   Radio,
+  Settings,
   Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
@@ -24,6 +25,7 @@ const SUPERVISOR_NAV = [
   { href: '/dashboard/orders', label: 'Historial', icon: History },
   { href: '/dashboard/technicians', label: 'Gestión de Técnicos', icon: Users },
   { href: '/dashboard/analytics', label: 'Analítica y Reportes', icon: BarChart3 },
+  { href: '/dashboard/settings', label: 'Configuración', icon: Settings },
 ];
 
 const TECHNICIAN_NAV = [

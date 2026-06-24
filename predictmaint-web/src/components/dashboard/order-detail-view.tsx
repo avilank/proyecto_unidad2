@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Topbar } from '@/components/common/topbar';
 import { RagDetailText } from '@/components/common/rag-detail-text';
+import { RagTechnicianResponsePanel } from '@/components/dashboard/rag-technician-response-panel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +40,9 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
   const isFinalized = data?.estado === EstadoOrden.FINALIZADO;
   const isPending = data?.estado === EstadoOrden.PENDIENTE;
   const isInProgress = data?.estado === EstadoOrden.EN_PROGRESO;
+  const ragEstado = rag.data?.estado ?? 'pendiente';
+  const hasRagPlan = (rag.data?.acciones?.length ?? 0) > 0;
+  const showRagResponse = isTechnician && hasRagPlan && !isFinalized;
   const canRegister = isInProgress || (!isTechnician && isPending);
   const backHref = isTechnician ? '/dashboard/my-work' : '/dashboard/orders';
   const backLabel = isTechnician ? '← Mi trabajo' : '← Historial';
@@ -61,14 +65,13 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
     }
   };
 
-  const handleStart = () => runAction(() => orderService.startOrder(orderId));
+  const handleAcceptRagAndStart = () =>
+    runAction(async () => {
+      await ragService.accept(orderId);
+      await orderService.startOrder(orderId);
+    });
 
-  const buildRagSolutionText = () => {
-    const acciones = rag.data?.acciones ?? [];
-    if (!acciones.length) return 'Intervención según plan RAG (sin acciones detalladas)';
-    return acciones.map((a) => `${a.orden}. ${a.titulo}`).join('; ');
-  };
-
+  /* Atajo admin: aceptar RAG y finalizar en un paso (oculto para técnico por ahora)
   const handleAcceptRagAndFinish = () =>
     runAction(async () => {
       await ragService.accept(orderId);
@@ -83,6 +86,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
       setObservaciones('');
       if (isTechnician) router.push('/dashboard/my-work');
     });
+  */
 
   const handleRegisterSolution = () =>
     runAction(async () => {
@@ -262,18 +266,35 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
             </Card>
 
             <div className="space-y-3 xl:col-span-3">
+              {showRagResponse && (
+                <RagTechnicianResponsePanel
+                  orderId={orderId}
+                  orderEstado={data?.estado ?? EstadoOrden.PENDIENTE}
+                  ragEstado={ragEstado}
+                  maquinaId={data?.maquinaId}
+                  tipoFallo={data?.tipoFallo}
+                  onUpdated={refresh}
+                  onAccept={handleAcceptRagAndStart}
+                />
+              )}
+
               <Card>
                 <CardHeader>
                   <CardTitle>Registrar Solución Aplicada</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {isPending && isTechnician && (
-                    <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-ink-soft">
-                      Debes iniciar la orden para registrar tiempos y finalizar la intervención.
-                      <Button className="mt-3 w-full" disabled={busy} onClick={handleStart}>
-                        Iniciar orden
-                      </Button>
-                    </div>
+                  {isPending && isTechnician && ragEstado !== 'aceptado' && (
+                    <p className="text-sm text-ink-muted">
+                      {hasRagPlan
+                        ? 'Acepta las recomendaciones RAG para comenzar la intervención.'
+                        : 'Esperando recomendaciones RAG del sistema.'}
+                    </p>
+                  )}
+
+                  {isInProgress && isTechnician && (
+                    <p className="text-sm text-ink-soft">
+                      Orden en progreso. Registra la solución y observaciones antes de finalizar.
+                    </p>
                   )}
 
                   {isFinalized ? (
@@ -295,7 +316,8 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                     </div>
                   ) : canRegister ? (
                     <>
-                      {isInProgress && (rag.data?.acciones?.length ?? 0) > 0 && (
+                      {/* Atajo: aceptar plan RAG y finalizar en un paso (solo admin / deshabilitado)
+                      {isInProgress && (rag.data?.acciones?.length ?? 0) > 0 && !isTechnician && (
                         <button
                           type="button"
                           disabled={busy}
@@ -308,6 +330,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                           </span>
                         </button>
                       )}
+                      */}
 
                       <div className="space-y-2">
                         <p className="text-xs text-ink-muted">Solución usada:</p>

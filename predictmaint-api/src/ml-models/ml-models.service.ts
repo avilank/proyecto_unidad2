@@ -11,6 +11,15 @@ import {
   type MlMulticlassMetricsPayload,
 } from './ml-metrics-sync';
 
+const ML_MODEL_DESCRIPTIONS: Record<string, string> = {
+  XGBoost: 'Mayor precisión — Recomendado',
+  'Random Forest': 'Robusto ante ruido y outliers',
+  'Regresión Logística': 'Alta interpretabilidad',
+  LightGBM: 'Óptimo para clases desbalanceadas',
+  'Decision Tree': 'Alta interpretabilidad visual',
+  SVM: 'Efectivo en alta dimensionalidad',
+};
+
 @Injectable()
 export class MlModelsService {
   private readonly logger = new Logger(MlModelsService.name);
@@ -47,7 +56,7 @@ export class MlModelsService {
             ? Number(m.f1Score)
             : null,
       activo: m.esDefault,
-      descripcion: m.version ?? null,
+      descripcion: ML_MODEL_DESCRIPTIONS[m.nombre] ?? m.version ?? null,
       tn: m.tn ?? null,
       fp: m.fp ?? null,
       fn: m.fn ?? null,

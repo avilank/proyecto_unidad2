@@ -13,6 +13,8 @@ import type {
 } from '@/core/types/api';
 import type { IAnalyticsRepository } from '@/core/interfaces';
 import { apiClient } from '@/infrastructure/http/clients/apiClient';
+import type { AnalyticsFilters } from '@/lib/types/analytics-filters';
+import { analyticsFiltersToParams } from '@/lib/types/analytics-filters';
 import { FAULT_TYPE_ORDER } from '@/lib/constants/fault-types';
 
 type FaultByTypeApi = { tipoFallo?: string; tipo?: string; count?: number; total?: number };
@@ -22,22 +24,30 @@ export class AnalyticsRepository implements IAnalyticsRepository {
     return apiClient.get<DashboardApiResponse>('/analytics/dashboard');
   }
 
-  getSummary(range = 'week'): Promise<AnalyticsSummary> {
-    return apiClient.get<AnalyticsSummary>('/analytics/summary', { params: { range } });
+  getSummary(filters: AnalyticsFilters = { range: 'week' }): Promise<AnalyticsSummary> {
+    return apiClient.get<AnalyticsSummary>('/analytics/summary', {
+      params: analyticsFiltersToParams(filters),
+    });
   }
 
   getRepetitiveFaults(): Promise<RecurrentMachineFault[]> {
     return apiClient.get<RecurrentMachineFault[]>('/analytics/recurrent-machines');
   }
 
-  getMachineRecurrence(days = 7, minFallos = 2): Promise<MachineRecurrence[]> {
+  getMachineRecurrence(
+    days = 7,
+    minFallos = 2,
+    filters: AnalyticsFilters = { range: 'week' },
+  ): Promise<MachineRecurrence[]> {
     return apiClient.get<MachineRecurrence[]>('/analytics/machine-recurrence', {
-      params: { days, minFallos },
+      params: { days, minFallos, ...analyticsFiltersToParams(filters) },
     });
   }
 
-  getUnattendedOrders(): Promise<UnattendedOrder[]> {
-    return apiClient.get<UnattendedOrder[]>('/analytics/unattended');
+  getUnattendedOrders(filters: AnalyticsFilters = { range: 'week' }) {
+    return apiClient.get<UnattendedOrder[]>('/analytics/unattended', {
+      params: analyticsFiltersToParams(filters),
+    });
   }
 
   getNotificationLog(limit = 50): Promise<PaginatedResponse<NotificationLogEntry>> {
@@ -46,9 +56,9 @@ export class AnalyticsRepository implements IAnalyticsRepository {
     });
   }
 
-  async getFaultsByType(range = 'week'): Promise<FaultByType[]> {
+  async getFaultsByType(filters: AnalyticsFilters = { range: 'week' }): Promise<FaultByType[]> {
     const raw = await apiClient.get<FaultByTypeApi[]>('/analytics/faults-by-type', {
-      params: { range },
+      params: analyticsFiltersToParams(filters),
     });
     const counts = new Map<string, number>();
     for (const row of raw) {
@@ -72,9 +82,9 @@ export class AnalyticsRepository implements IAnalyticsRepository {
     return apiClient.get<AvailabilitySnapshot>('/analytics/availability');
   }
 
-  getPredictionValidation(range = 'month'): Promise<PredictionValidationRow[]> {
+  getPredictionValidation(filters: AnalyticsFilters = { range: 'month' }): Promise<PredictionValidationRow[]> {
     return apiClient.get<PredictionValidationRow[]>('/analytics/prediction-validation', {
-      params: { range },
+      params: analyticsFiltersToParams(filters),
     });
   }
 }

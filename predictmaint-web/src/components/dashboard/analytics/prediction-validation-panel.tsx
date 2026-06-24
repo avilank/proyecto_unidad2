@@ -3,19 +3,19 @@
 import { useMemo, useState } from 'react';
 import { Eye, X } from 'lucide-react';
 import type { PredictionValidationRow } from '@/core/types/api';
+import {
+  AnalyticsFilterField,
+  analyticsSelectClass,
+} from '@/components/dashboard/analytics/analytics-filter-controls';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import { TableSkeleton } from '@/components/ui/skeleton';
+import { FAULT_TYPE_ORDER, FAULT_LABELS } from '@/lib/constants/fault-types';
+import type { AnalyticsFilters, ValidationPanelFilters } from '@/lib/types/analytics-filters';
+import { useMachines } from '@/presentation/hooks/useMachines';
 import { usePredictionValidation } from '@/presentation/hooks/useAnalytics';
 import { cn } from '@/lib/utils/cn';
-
-type Range = 'week' | 'month';
-
-const RANGES: { value: Range; label: string }[] = [
-  { value: 'week', label: 'Semana' },
-  { value: 'month', label: 'Mes' },
-];
 
 function formatFecha(iso: string): string {
   try {
@@ -50,10 +50,21 @@ function Metric({
   );
 }
 
-export function PredictionValidationPanel() {
-  const [range, setRange] = useState<Range>('month');
-  const { data, isLoading } = usePredictionValidation(range);
+export function PredictionValidationPanel({
+  filters,
+  panelFilters,
+  onPanelFiltersChange,
+}: {
+  filters: AnalyticsFilters;
+  panelFilters: ValidationPanelFilters;
+  onPanelFiltersChange: (next: ValidationPanelFilters) => void;
+}) {
+  const machines = useMachines({ poll: false });
+  const { data, isLoading } = usePredictionValidation(filters);
   const [detalle, setDetalle] = useState<PredictionValidationRow | null>(null);
+
+  const patch = (partial: Partial<ValidationPanelFilters>) =>
+    onPanelFiltersChange({ ...panelFilters, ...partial });
 
   const stats = useMemo(() => {
     const rows = data ?? [];
@@ -66,29 +77,65 @@ export function PredictionValidationPanel() {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-2">
-        <div>
-          <CardTitle>Validación de predicciones — Modelo vs. Técnico</CardTitle>
-          <p className="mt-1 text-sm text-ink-muted">
-            Historial de aciertos: el técnico aceptó o rechazó cada predicción automática.
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-1 rounded-md border border-border bg-surface-2 p-0.5">
-          {RANGES.map((r) => (
-            <button
-              key={r.value}
-              type="button"
-              onClick={() => setRange(r.value)}
-              className={cn(
-                'rounded px-3 py-1 text-xs font-semibold transition-colors',
-                range === r.value
-                  ? 'bg-accent text-white'
-                  : 'text-ink-muted hover:text-ink',
-              )}
+      <CardHeader className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        <CardTitle className="shrink-0">
+          Validación de predicciones — Modelo vs. Técnico
+        </CardTitle>
+        <div className="flex flex-wrap items-end gap-3">
+          <AnalyticsFilterField label="Tipo de fallo" className="min-w-[10rem]">
+            <select
+              className={analyticsSelectClass}
+              value={panelFilters.tipoFallo ?? 'todos'}
+              onChange={(e) =>
+                patch({
+                  tipoFallo: e.target.value === 'todos' ? undefined : e.target.value,
+                })
+              }
             >
-              {r.label}
-            </button>
-          ))}
+              <option value="todos">Todos</option>
+              {FAULT_TYPE_ORDER.map((tipo) => (
+                <option key={tipo} value={tipo}>
+                  {tipo} — {FAULT_LABELS[tipo]}
+                </option>
+              ))}
+            </select>
+          </AnalyticsFilterField>
+
+          <AnalyticsFilterField label="Decisión" className="min-w-[9rem]">
+            <select
+              className={analyticsSelectClass}
+              value={panelFilters.decision ?? 'todos'}
+              onChange={(e) =>
+                patch({
+                  decision: e.target.value === 'todos' ? undefined : e.target.value,
+                })
+              }
+            >
+              <option value="todos">Todos</option>
+              <option value="aceptada">Aceptados</option>
+              <option value="rechazada">Rechazados</option>
+            </select>
+          </AnalyticsFilterField>
+
+          <AnalyticsFilterField label="Máquina" className="min-w-[9rem]">
+            <select
+              className={analyticsSelectClass}
+              value={panelFilters.maquinaId ?? ''}
+              onChange={(e) =>
+                patch({
+                  maquinaId: e.target.value || undefined,
+                })
+              }
+            >
+              <option value="">Todas</option>
+              {(machines.data ?? []).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.id}
+                  {m.nombre ? ` — ${m.nombre}` : ''}
+                </option>
+              ))}
+            </select>
+          </AnalyticsFilterField>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -104,7 +151,7 @@ export function PredictionValidationPanel() {
         ) : (
           <DataTable
             rows={data ?? []}
-            emptyMessage="No hay predicciones validadas en el rango"
+            emptyMessage="No hay predicciones validadas con los filtros actuales"
             columns={[
               {
                 key: 'orden',
