@@ -550,6 +550,12 @@ export class AnalyticsService {
       xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
     const toH = (ms: number | null) =>
       ms != null ? Math.round((ms / H) * 10) / 10 : null;
+    /** MTTR < 1 h: conserva precisión en minutos (evita 3 min → 0.0 h). */
+    const toMttrH = (ms: number | null) => {
+      if (ms == null) return null;
+      if (ms / H < 1) return Math.round(ms / (1000 * 60)) / 60;
+      return Math.round((ms / H) * 10) / 10;
+    };
 
     const allRepair: number[] = [];
     const allGaps: number[] = [];
@@ -563,7 +569,7 @@ export class AnalyticsService {
         allGaps.push(...gaps);
         return {
           maquinaId,
-          mttrHoras: toH(avg(e.repairMs)),
+          mttrHoras: toMttrH(avg(e.repairMs)),
           mtbfHoras: toH(avg(gaps)),
           reparaciones: e.repairMs.length,
           fallas: e.detTimes.length,
@@ -573,7 +579,7 @@ export class AnalyticsService {
 
     return {
       global: {
-        mttrHoras: toH(avg(allRepair)),
+        mttrHoras: toMttrH(avg(allRepair)),
         mtbfHoras: toH(avg(allGaps)),
         reparaciones: allRepair.length,
         fallas: porMaquina.reduce((s, m) => s + m.fallas, 0),

@@ -20,15 +20,32 @@ const TOOLTIP_STYLE = {
   fontSize: 12,
 } as const;
 
-/** Elige la unidad del gráfico: si el máximo ≥ 48 h, muestra en días. */
-function pickUnit(values: (number | null)[]): { div: number; label: string } {
+/** MTBF: horas o días si el máximo ≥ 48 h. */
+function pickMtbfUnit(values: (number | null)[]): { div: number; label: string; decimals: number } {
   const nums = values.filter((v): v is number => v != null);
   const max = nums.length ? Math.max(...nums) : 0;
-  return max >= 48 ? { div: 24, label: 'días' } : { div: 1, label: 'horas' };
+  return max >= 48
+    ? { div: 24, label: 'días', decimals: 1 }
+    : { div: 1, label: 'horas', decimals: 1 };
 }
 
-/** Formato corto para los KPIs globales (auto h/días). */
-function fmt(h: number | null): string {
+/** MTTR: minutos si < 1 h, horas si < 48 h, días si ≥ 48 h. */
+function pickMttrUnit(values: (number | null)[]): { div: number; label: string; decimals: number } {
+  const nums = values.filter((v): v is number => v != null);
+  const max = nums.length ? Math.max(...nums) : 0;
+  if (max < 1) return { div: 1 / 60, label: 'min', decimals: 0 };
+  if (max >= 48) return { div: 24, label: 'días', decimals: 1 };
+  return { div: 1, label: 'horas', decimals: 1 };
+}
+
+function fmtMttr(h: number | null): string {
+  if (h == null) return '—';
+  if (h < 1) return `${Math.round(h * 60)} min`;
+  if (h >= 48) return `${Math.round((h / 24) * 10) / 10} d`;
+  return `${h} h`;
+}
+
+function fmtMtbf(h: number | null): string {
   if (h == null) return '—';
   return h >= 48 ? `${Math.round((h / 24) * 10) / 10} d` : `${h} h`;
 }
@@ -48,19 +65,23 @@ function ReliabilityBars({
   color,
   unitLabel,
   div,
+  decimals,
 }: {
   rows: ReliabilityMachine[];
   metric: 'mttrHoras' | 'mtbfHoras';
   color: string;
   unitLabel: string;
   div: number;
+  decimals: number;
 }) {
   const data = rows
     .filter((r) => r[metric] != null)
-    .map((r) => ({
-      maquinaId: r.maquinaId,
-      valor: Math.round(((r[metric] as number) / div) * 10) / 10,
-    }));
+    .map((r) => {
+      const raw = (r[metric] as number) / div;
+      const valor =
+        decimals === 0 ? Math.round(raw) : Math.round(raw * 10) / 10;
+      return { maquinaId: r.maquinaId, valor };
+    });
 
   if (data.length === 0) {
     return (
@@ -97,8 +118,8 @@ export function ReliabilityPanel({
   if (isLoading) return <Skeleton className="h-[420px] w-full" />;
 
   const rows = data?.porMaquina ?? [];
-  const mttrUnit = pickUnit(rows.map((r) => r.mttrHoras));
-  const mtbfUnit = pickUnit(rows.map((r) => r.mtbfHoras));
+  const mttrUnit = pickMttrUnit(rows.map((r) => r.mttrHoras));
+  const mtbfUnit = pickMtbfUnit(rows.map((r) => r.mtbfHoras));
 
   return (
     <Card>
@@ -111,8 +132,8 @@ export function ReliabilityPanel({
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <MiniMetric label="MTTR global" value={fmt(data?.global.mttrHoras ?? null)} />
-          <MiniMetric label="MTBF global" value={fmt(data?.global.mtbfHoras ?? null)} />
+          <MiniMetric label="MTTR global" value={fmtMttr(data?.global.mttrHoras ?? null)} />
+          <MiniMetric label="MTBF global" value={fmtMtbf(data?.global.mtbfHoras ?? null)} />
           <MiniMetric label="Reparaciones" value={String(data?.global.reparaciones ?? 0)} />
           <MiniMetric label="Fallas" value={String(data?.global.fallas ?? 0)} />
         </div>
@@ -124,11 +145,12 @@ export function ReliabilityPanel({
               <span className="text-xs font-normal text-ink-muted">({mttrUnit.label})</span>
             </p>
             <ReliabilityBars
-              rows={rows}
+              rows={rows.filter((r) => r.reparaciones > 0)}
               metric="mttrHoras"
               color="var(--color-warning)"
               unitLabel={mttrUnit.label}
               div={mttrUnit.div}
+              decimals={mttrUnit.decimals}
             />
           </div>
           <div>
@@ -142,6 +164,7 @@ export function ReliabilityPanel({
               color="var(--color-accent)"
               unitLabel={mtbfUnit.label}
               div={mtbfUnit.div}
+              decimals={mtbfUnit.decimals}
             />
           </div>
         </div>
