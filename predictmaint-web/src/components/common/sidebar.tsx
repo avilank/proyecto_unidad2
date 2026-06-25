@@ -118,14 +118,14 @@ export function Sidebar() {
             <LogOut className="h-4 w-4" />
           </button>
         </div>
-        <button
+        {/* <button
           type="button"
           onClick={() => void handleLogout()}
           className="mt-3 flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-ink-soft transition-colors hover:bg-surface-2 hover:text-ink"
         >
           <LogOut className="h-4 w-4 shrink-0" />
           Cerrar sesión
-        </button>
+        </button> */}
       </div>
     </aside>
   );
