@@ -18,6 +18,10 @@ export function useDispatchSchedule() {
   return useSWR('/catalog/dispatch-schedule', () => configService.getDispatchSchedule());
 }
 
+export function useRagSources() {
+  return useSWR('/catalog/rag-sources', () => configService.getRagSources());
+}
+
 export function useSettingsMutations() {
   return {
     saveMlSettings: async (payload: {
@@ -35,6 +39,11 @@ export function useSettingsMutations() {
       const result = await configService.saveDispatchSchedule(items);
       await globalMutate('/catalog/dispatch-schedule', result, false);
       await globalMutate('/config');
+      return result;
+    },
+    patchRagSource: async (id: number, activa: boolean) => {
+      const result = await configService.patchRagSource(id, activa);
+      await globalMutate('/catalog/rag-sources');
       return result;
     },
     activateModel: async (id: number, etapa: EtapaModelo) => {

@@ -15,6 +15,10 @@ export class ConfigRepository {
     return apiClient.get<RagSource[]>('/catalog/rag-sources');
   }
 
+  patchRagSource(id: number, activa: boolean): Promise<RagSource> {
+    return apiClient.patch<RagSource>(`/catalog/rag-sources/${id}`, { activa });
+  }
+
   getDispatchSchedule(): Promise<DispatchScheduleItem[]> {
     return apiClient.get<DispatchScheduleItem[]>('/catalog/dispatch-schedule');
   }

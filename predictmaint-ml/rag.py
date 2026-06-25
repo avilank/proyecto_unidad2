@@ -83,38 +83,44 @@ FAULT_PROFILES: dict[str, dict[str, Any]] = {
     "HDF": {
         "nombre": "Heat Dissipation Failure",
         "riesgo": "Sobrecalentamiento por disipacion insuficiente.",
-        "tiempo_limite": "15-30 min",
+        "tiempo_limite": "6-12 horas",
         "estandar": "PM-STD-THERM-01: parada controlada, bloqueo/etiquetado y estabilizacion termica antes de intervenir.",
         "herramientas": "termometro infrarrojo, camara termica, multimetro, kit de limpieza de ventilacion, EPP termico.",
     },
     "PWF": {
         "nombre": "Power Failure",
         "riesgo": "Potencia fuera de rango, posible falla electrica o sobreconsumo.",
-        "tiempo_limite": "15 min",
+        "tiempo_limite": "6-18 horas",
         "estandar": "PM-STD-ELEC-02: aislamiento electrico, verificacion de tension cero y prueba de carga controlada.",
         "herramientas": "multimetro True RMS, pinza amperimetrica, analizador de potencia, destornilladores aislados, EPP dielectrico.",
     },
     "TWF": {
         "nombre": "Tool Wear Failure",
         "riesgo": "Desgaste critico de herramienta con riesgo de mala calidad, vibracion o dano del husillo.",
-        "tiempo_limite": "30-45 min",
+        "tiempo_limite": "24-48 horas",
         "estandar": "PM-STD-TOOL-03: cambio seguro de herramienta, verificacion dimensional y registro CMMS obligatorio.",
         "herramientas": "calibrador, comparador, llave dinamometrica, kit de herramienta de corte, reloj palpador, EPP mecanico.",
     },
     "OSF": {
         "nombre": "Overstrain Failure",
         "riesgo": "Sobreesfuerzo mecanico por torque y desgaste acumulado.",
-        "tiempo_limite": "15-30 min",
+        "tiempo_limite": "6-24 horas",
         "estandar": "PM-STD-MECH-04: reduccion de carga, inspeccion de rodamientos/acoples y prueba de vibracion antes de reinicio.",
         "herramientas": "torquimetro, acelerometro o vibrometro, estetoscopio mecanico, extractor de rodamientos, lubricante industrial.",
     },
     "RNF": {
         "nombre": "Random Failure",
         "riesgo": "Falla no deterministica; requiere diagnostico humano antes de liberar la maquina.",
-        "tiempo_limite": "Inmediato",
+        "tiempo_limite": "6 horas",
         "estandar": "PM-STD-SAFE-05: aislamiento preventivo, inspeccion de especialista y autorizacion de supervisor.",
         "herramientas": "checklist de inspeccion, multimetro, camara termica, vibrometro, tablet CMMS, EPP completo.",
     },
+}
+
+ESCALATION_BY_PRIORITY: dict[str, tuple[int, int]] = {
+    "CRITICO": (6, 12),
+    "MEDIO": (12, 24),
+    "BAJO": (24, 48),
 }
 
 FAULT_ACTION_PLANS: dict[str, list[dict[str, str]]] = {
@@ -230,7 +236,7 @@ RNF_MANUAL_INSPECTION: list[dict[str, str]] = [
         "titulo": "Inspección manual obligatoria",
         "detalle": (
             "- Urgencia: Critica — Fallo aleatorio (RNF) sin patron determinista; requiere validacion humana antes de liberar la maquina.\n"
-            "- Tiempo limite: Inmediato, antes de reanudar cualquier ciclo productivo.\n"
+            "- Tiempo limite: 6 horas, antes de reanudar cualquier ciclo productivo.\n"
             "- Estandar interno: PM-STD-SAFE-05 (aislamiento, bloqueo/etiquetado e inspeccion de especialista).\n"
             "- Herramientas: checklist de inspeccion, multimetro, camara termica, vibrometro, tablet CMMS y EPP completo.\n"
             "- Accion recomendada: Escalar a inspeccion manual con especialista externo y no autorizar reinicio hasta cierre formal.\n"
@@ -302,6 +308,16 @@ def _priority_label(prioridad: str) -> str:
     return labels.get(prioridad.upper(), prioridad)
 
 
+def _tiempo_limite_por_prioridad(prioridad: str, fault: str) -> str:
+    key = prioridad.upper()
+    lo, hi = ESCALATION_BY_PRIORITY.get(key, (12, 24))
+    if fault == "RNF":
+        return "6 horas"
+    if lo == hi:
+        return f"{lo} horas"
+    return f"{lo}-{hi} horas"
+
+
 def _build_bullet_detail(
     *,
     urgencia: str,
@@ -332,7 +348,7 @@ def _format_detail(action_detail: str, fault: str, prioridad: str, escalado: boo
     detail = action_detail.strip()
     return _build_bullet_detail(
         urgencia=f"{_priority_label(prioridad)} — {profile['riesgo']}",
-        tiempo_limite=f"{profile['tiempo_limite']} antes de que el problema escale o afecte continuidad operativa.",
+        tiempo_limite=f"{_tiempo_limite_por_prioridad(prioridad, fault)} antes de que el problema escale o afecte continuidad operativa.",
         estandar=profile["estandar"],
         herramientas=profile["herramientas"],
         accion=detail,
@@ -479,8 +495,10 @@ def _build_prompt(
                 "- Herramientas: ...",
                 "- Accion recomendada: ...",
                 "- Justificacion tecnica: ...",
-                "La justificacion tecnica debe explicar por que conviene esa accion, que riesgo evita y que pasa si no se ejecuta a tiempo.",
-                "Redacta en espanol claro para un tecnico de planta, con argumentos concretos y profesionales.",
+                "La justificacion tecnica debe tener 2-3 oraciones: explicar por que conviene esa accion, que riesgo operacional evita, que componente protege y que pasa si no se ejecuta a tiempo.",
+                "El tiempo limite debe expresarse en horas entre 6 y 48 segun la urgencia: CRITICO 6-12h, MEDIO 12-24h, BAJO 24-48h. Usa tiempoLimiteBase como referencia. No uses minutos ni valores fuera de ese rango.",
+                "La accion recomendada debe ser concreta, secuencial y orientada a planta (que hacer, en que orden y que verificar).",
+                "Redacta en espanol claro para un tecnico de planta, con argumentos concretos, tecnicos y profesionales.",
                 "No inventes codigos de fuente. No incluyas texto fuera del JSON.",
             ],
             "formato_respuesta": {
@@ -640,7 +658,7 @@ def _ensure_operational_detail(detail: str, fault: str, prioridad: str, escalado
 
     return _build_bullet_detail(
         urgencia=f"{_priority_label(prioridad)} — {profile['riesgo']}",
-        tiempo_limite=f"{profile['tiempo_limite']} antes de que el problema escale o afecte continuidad operativa.",
+        tiempo_limite=f"{_tiempo_limite_por_prioridad(prioridad, fault)} antes de que el problema escale o afecte continuidad operativa.",
         estandar=profile["estandar"],
         herramientas=profile["herramientas"],
         accion=accion,

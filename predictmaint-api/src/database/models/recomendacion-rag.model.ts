@@ -7,9 +7,11 @@ import {
   AutoIncrement,
   ForeignKey,
   BelongsTo,
+  HasMany,
 } from 'sequelize-typescript';
 import { ClasificacionFallo } from './clasificacion-fallo.model';
 import { FuenteRag } from './fuente-rag.model';
+import { RecomendacionRagFuente } from './recomendacion-rag-fuente.model';
 
 @Table({ tableName: 'recomendaciones_rag', underscored: true, timestamps: false })
 export class RecomendacionRag extends Model {
@@ -43,4 +45,10 @@ export class RecomendacionRag extends Model {
 
   @BelongsTo(() => FuenteRag)
   declare fuente?: FuenteRag;
+
+  @HasMany(() => RecomendacionRagFuente, {
+    foreignKey: 'idRecomendacion',
+    sourceKey: 'idRecomendacion',
+  })
+  declare fuentes?: RecomendacionRagFuente[];
 }

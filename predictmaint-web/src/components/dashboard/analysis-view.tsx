@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { BinaryPrediction, MulticlassPrediction, Order, SensorReading } from '@/core/entities';
 import { Topbar } from '@/components/common/topbar';
 import { RagDetailText } from '@/components/common/rag-detail-text';
+import { RagRegenerateButton, RagSourcesFooter } from '@/components/dashboard/rag-plan-footer';
 import { RagTechnicianResponsePanel } from '@/components/dashboard/rag-technician-response-panel';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -628,23 +629,12 @@ function RagTab({
                 </div>
               </div>
             ))}
-            {/* Fuentes RAG — oculto por ahora (no está en diseño Figma actual)
-            {(data?.fuentes?.length ?? 0) > 0 && (
-              <div className="rounded-md border border-border-soft bg-surface-2 p-3 text-xs text-ink-muted">
-                <p className="font-semibold text-ink">Fuentes RAG</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {data?.fuentes?.map((fuente) => (
-                    <span
-                      key={fuente}
-                      className="rounded-full border border-border bg-bg px-2.5 py-1 text-[11px] text-ink-soft"
-                    >
-                      {fuente}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            */}
+            <RagSourcesFooter fuentes={data?.fuentes} />
+            <RagRegenerateButton
+              orderId={orderId}
+              fullWidth
+              onRegenerated={onRegenerated}
+            />
           </CardContent>
         </Card>
 
@@ -795,14 +785,14 @@ function RagTab({
 function formatRagPriority(prioridad: string): string {
   switch (prioridad?.toUpperCase()) {
     case 'CRITICO':
-      return 'critico';
+      return 'Crítica';
     case 'MEDIO':
-      return 'medio';
+      return 'Moderada';
     case 'BAJO':
     case 'ALTO':
-      return 'bajo';
+      return 'Baja';
     default:
-      return prioridad?.toLowerCase() ?? '—';
+      return prioridad ?? '—';
   }
 }
 

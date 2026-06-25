@@ -24,6 +24,7 @@ import { evaluateSensorRules } from '../common/utils/sensor-rules.util';
 import { findMaquinaByCodigo } from '../common/utils/maquina.util';
 import { resolveTipoFalloByMinAgreement } from '../common/utils/classify-fault.util';
 import { resolveModeloId } from '../common/utils/modelo-ml.util';
+import { buildGeneralRecommendation } from '../common/utils/rag-recommendation.util';
 import { tecnicoNombre } from '../common/utils/tecnico-display.util';
 import {
   COOLDOWN_EVALUACION_MINUTOS_DEFAULT,
@@ -39,6 +40,7 @@ import { LecturaSensor } from '../database/models/lectura-sensor.model';
 import { Maquina } from '../database/models/maquina.model';
 import { Orden } from '../database/models/orden.model';
 import { PrediccionFallo } from '../database/models/prediccion-fallo.model';
+import { RecomendacionRagFuente } from '../database/models/recomendacion-rag-fuente.model';
 import { RecomendacionRag } from '../database/models/recomendacion-rag.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
 import { MlGatewayService, MlPredictFeatures, MlRagSource } from '../ml-gateway/ml-gateway.service';
@@ -65,6 +67,8 @@ export class SensorReadingsService {
     @InjectModel(PrediccionFallo) private readonly prediccionModel: typeof PrediccionFallo,
     @InjectModel(ClasificacionFallo) private readonly clasificacionModel: typeof ClasificacionFallo,
     @InjectModel(RecomendacionRag) private readonly recomendacionModel: typeof RecomendacionRag,
+    @InjectModel(RecomendacionRagFuente)
+    private readonly recomendacionFuenteModel: typeof RecomendacionRagFuente,
     @InjectModel(FuenteRag) private readonly fuenteRagModel: typeof FuenteRag,
     @InjectModel(TipoFallo) private readonly tipoFalloModel: typeof TipoFallo,
     @InjectModel(ConfiguracionAlertas) private readonly configAlertasModel: typeof ConfiguracionAlertas,
@@ -197,26 +201,37 @@ export class SensorReadingsService {
       fuentes,
     });
 
-    for (const acc of ragResult.acciones) {
-      let fuenteId: number | undefined;
-      if (ragResult.fuentes[acc.orden - 1]) {
-        const titulo = ragResult.fuentes[acc.orden - 1];
-        let fuente = await this.fuenteRagModel.findOne({ where: { titulo } });
-        if (!fuente) {
-          fuente = await this.fuenteRagModel.create({ titulo, activo: true });
-        }
-        fuenteId = fuente.idFuente;
-      }
+    const general = buildGeneralRecommendation(tipoFallo, ragResult.acciones, Boolean(ragResult.escalado));
+    const recommendation = await this.recomendacionModel.create({
+      idClasificacion: clasificacionId,
+      orden: 1,
+      titulo: general.titulo,
+      prioridad: general.prioridad,
+      recomendacion: general.detalle,
+    });
 
-      await this.recomendacionModel.create({
-        idClasificacion: clasificacionId,
-        idFuente: fuenteId,
-        orden: acc.orden,
-        titulo: acc.titulo,
-        prioridad: acc.prioridad,
-        recomendacion: acc.detalle,
-      });
+    const sourceIds = await this.ensureRagSourceIds(ragResult.fuentes);
+    if (sourceIds.length) {
+      await this.recomendacionFuenteModel.bulkCreate(
+        sourceIds.map((idFuente) => ({
+          idRecomendacion: recommendation.idRecomendacion,
+          idFuente,
+        })),
+      );
     }
+  }
+
+  private async ensureRagSourceIds(sourceTitles: string[]): Promise<number[]> {
+    const ids: number[] = [];
+    for (const title of sourceTitles) {
+      if (!title) continue;
+      let fuente = await this.fuenteRagModel.findOne({ where: { titulo: title } });
+      if (!fuente) {
+        fuente = await this.fuenteRagModel.create({ titulo: title, activo: true });
+      }
+      ids.push(fuente.idFuente);
+    }
+    return Array.from(new Set(ids));
   }
 
   private async getActiveRagSources(): Promise<MlRagSource[]> {

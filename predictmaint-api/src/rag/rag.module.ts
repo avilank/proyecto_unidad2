@@ -7,6 +7,7 @@ import { EventoOrden } from '../database/models/evento-orden.model';
 import { FuenteRag } from '../database/models/fuente-rag.model';
 import { Maquina } from '../database/models/maquina.model';
 import { Orden } from '../database/models/orden.model';
+import { RecomendacionRagFuente } from '../database/models/recomendacion-rag-fuente.model';
 import { RecomendacionRag } from '../database/models/recomendacion-rag.model';
 import { RespuestaRecomendacion } from '../database/models/respuesta-recomendacion.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
@@ -18,6 +19,7 @@ import { RagService } from './rag.service';
   imports: [
     SequelizeModule.forFeature([
       RecomendacionRag,
+      RecomendacionRagFuente,
       FuenteRag,
       Orden,
       EventoOrden,

@@ -1,9 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op } from 'sequelize';
-import { findMaquinaByCodigo } from '../common/utils/maquina.util';
-import { resolveModeloId } from '../common/utils/modelo-ml.util';
-import { tecnicoNombre } from '../common/utils/tecnico-display.util';
+import { buildGeneralRecommendation } from '../common/utils/rag-recommendation.util';
 import { Alerta } from '../database/models/alerta.model';
 import { AnalisisFallo } from '../database/models/analisis-fallo.model';
 import { ClasificacionFallo } from '../database/models/clasificacion-fallo.model';
@@ -11,6 +9,7 @@ import { EventoOrden } from '../database/models/evento-orden.model';
 import { FuenteRag } from '../database/models/fuente-rag.model';
 import { Maquina } from '../database/models/maquina.model';
 import { Orden } from '../database/models/orden.model';
+import { RecomendacionRagFuente } from '../database/models/recomendacion-rag-fuente.model';
 import { RecomendacionRag } from '../database/models/recomendacion-rag.model';
 import { RespuestaRecomendacion } from '../database/models/respuesta-recomendacion.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
@@ -20,6 +19,8 @@ import { MlGatewayService, MlRagSource } from '../ml-gateway/ml-gateway.service'
 export class RagService {
   constructor(
     @InjectModel(RecomendacionRag) private readonly recomendacionModel: typeof RecomendacionRag,
+    @InjectModel(RecomendacionRagFuente)
+    private readonly recomendacionFuenteModel: typeof RecomendacionRagFuente,
     @InjectModel(FuenteRag) private readonly fuenteModel: typeof FuenteRag,
     @InjectModel(Orden) private readonly ordenModel: typeof Orden,
     @InjectModel(EventoOrden) private readonly eventoModel: typeof EventoOrden,
@@ -55,7 +56,7 @@ export class RagService {
     const { orden, lider } = await this.getLiderClasificacion(orderCodigo);
     const acciones = await this.recomendacionModel.findAll({
       where: { idClasificacion: lider.idClasificacion },
-      include: [{ model: FuenteRag }],
+      include: [{ model: RecomendacionRagFuente, include: [FuenteRag] }],
       order: [['orden', 'ASC']],
     });
 
@@ -77,9 +78,15 @@ export class RagService {
         titulo: a.titulo,
         detalle: a.recomendacion ?? null,
       })),
-      fuentes: acciones
-        .map((a) => a.fuente?.titulo)
-        .filter(Boolean) as string[],
+      fuentes: Array.from(
+        new Set(
+          acciones.flatMap((a) =>
+            (a.fuentes ?? [])
+              .map((f) => f.fuente?.titulo)
+              .filter((t): t is string => Boolean(t)),
+          ),
+        ),
+      ),
     };
   }
 
@@ -153,25 +160,48 @@ export class RagService {
       fuentes,
     });
 
-    await this.recomendacionModel.destroy({ where: { idClasificacion: lider.idClasificacion } });
-
-    for (const acc of ragResult.acciones) {
-      let fuenteId: number | undefined;
-      const titulo = ragResult.fuentes[acc.orden - 1];
-      if (titulo) {
-        let fuente = await this.fuenteModel.findOne({ where: { titulo } });
-        if (!fuente) fuente = await this.fuenteModel.create({ titulo, activo: true });
-        fuenteId = fuente.idFuente;
-      }
-      await this.recomendacionModel.create({
-        idClasificacion: lider.idClasificacion,
-        idFuente: fuenteId,
-        orden: acc.orden,
-        titulo: acc.titulo,
-        prioridad: acc.prioridad,
-        recomendacion: acc.detalle,
+    const prev = await this.recomendacionModel.findAll({
+      where: { idClasificacion: lider.idClasificacion },
+      attributes: ['idRecomendacion'],
+    });
+    const prevIds = prev.map((r) => r.idRecomendacion);
+    if (prevIds.length) {
+      await this.recomendacionFuenteModel.destroy({
+        where: { idRecomendacion: { [Op.in]: prevIds } },
       });
     }
+    await this.recomendacionModel.destroy({ where: { idClasificacion: lider.idClasificacion } });
+
+    const general = buildGeneralRecommendation(
+      lider.tipoFallo?.codigo ?? ragResult.tipoFallo ?? 'RNF',
+      ragResult.acciones,
+      Boolean(ragResult.escalado),
+    );
+    const rec = await this.recomendacionModel.create({
+      idClasificacion: lider.idClasificacion,
+      orden: 1,
+      titulo: general.titulo,
+      prioridad: general.prioridad,
+      recomendacion: general.detalle,
+    });
+
+    const sourceIds = await this.ensureSourceIds(ragResult.fuentes);
+    if (sourceIds.length) {
+      await this.recomendacionFuenteModel.bulkCreate(
+        sourceIds.map((idFuente) => ({ idRecomendacion: rec.idRecomendacion, idFuente })),
+      );
+    }
     return this.toPlanResponse(orderCodigo);
+  }
+
+  private async ensureSourceIds(sourceTitles: string[]): Promise<number[]> {
+    const result: number[] = [];
+    for (const title of sourceTitles) {
+      if (!title) continue;
+      let fuente = await this.fuenteModel.findOne({ where: { titulo: title } });
+      if (!fuente) fuente = await this.fuenteModel.create({ titulo: title, activo: true });
+      result.push(fuente.idFuente);
+    }
+    return Array.from(new Set(result));
   }
 }
