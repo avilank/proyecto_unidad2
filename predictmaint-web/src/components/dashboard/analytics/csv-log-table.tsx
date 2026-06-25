@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { NotificationLogEntry } from '@/core/types/api';
 import {
   AnalyticsFilterField,
@@ -9,6 +9,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
+import { Pagination } from '@/components/ui/pagination';
 import { TableSkeleton } from '@/components/ui/skeleton';
 import { FAULT_TYPE_ORDER, FAULT_LABELS } from '@/lib/constants/fault-types';
 import type { LogPanelFilters } from '@/lib/types/analytics-filters';
@@ -49,6 +50,8 @@ export function CsvLogTable({
   filters: LogPanelFilters;
   onFiltersChange: (next: LogPanelFilters) => void;
 }) {
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
   const machines = useMachines({ poll: false });
   const patch = (partial: Partial<LogPanelFilters>) =>
     onFiltersChange({ ...filters, ...partial });
@@ -69,6 +72,15 @@ export function CsvLogTable({
     }
     return rows;
   }, [items, filters]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filters.tipoFallo, filters.maquinaId, filters.estado, filters.canal]);
+
+  const pagedItems = useMemo(() => {
+    const start = (page - 1) * limit;
+    return filteredItems.slice(start, start + limit);
+  }, [filteredItems, page, limit]);
 
   return (
     <Card>
@@ -157,8 +169,9 @@ export function CsvLogTable({
         {isLoading ? (
           <TableSkeleton rows={6} />
         ) : (
-          <DataTable
-            rows={filteredItems}
+          <>
+            <DataTable
+            rows={pagedItems}
             emptyMessage="No hay mensajes registrados con los filtros actuales"
             columns={[
               {
@@ -197,6 +210,14 @@ export function CsvLogTable({
               },
             ]}
           />
+            <Pagination
+              page={page}
+              limit={limit}
+              total={filteredItems.length}
+              onPageChange={setPage}
+              onLimitChange={setLimit}
+            />
+          </>
         )}
       </CardContent>
     </Card>
