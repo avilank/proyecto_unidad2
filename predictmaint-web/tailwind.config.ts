@@ -46,6 +46,10 @@ const config: Config = {
           high: 'var(--color-risk-high)',
           critical: 'var(--color-risk-critical)',
         },
+        'analysis-bar': {
+          DEFAULT: 'var(--color-analysis-bar)',
+          border: 'var(--color-analysis-bar-border)',
+        },
       },
       borderRadius: {
         sm: 'var(--radius-sm)',
