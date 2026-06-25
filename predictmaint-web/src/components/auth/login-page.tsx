@@ -8,6 +8,7 @@ import { authService } from '@/application/services/auth.service';
 import { loginSchema, type LoginFormValues } from '@/lib/validations/login';
 import { useSessionStore } from '@/presentation/stores/sessionStore';
 import { Logo } from '@/components/common/logo';
+import { ThemeToggle } from '@/components/common/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { RolUsuario } from '@/core/types';
@@ -49,7 +50,11 @@ export function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen">
+    <div className="relative flex min-h-screen">
+      <div className="absolute right-4 top-4 z-10">
+        <ThemeToggle iconOnly />
+      </div>
+
       {/* Panel izquierdo — branding */}
       <section className="hidden w-1/2 flex-col justify-between bg-bg-deep p-12 lg:flex">
         <Logo />

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsOptional, IsString } from 'class-validator';
 import { EstadoOrden, SolucionTipo } from '../../common/enums';
 
 export class CreateOrderDto {
@@ -59,4 +59,14 @@ export class RejectPredictionDto {
   @ApiProperty({ description: 'Justificación del técnico para rechazar la predicción' })
   @IsString()
   justificacion!: string;
+}
+
+export class ReassignOrderDto {
+  @ApiProperty({ description: 'ID del técnico al que se reasigna' })
+  @IsInt()
+  tecnicoId!: number;
+
+  @ApiProperty({ description: 'Motivo de la reasignación' })
+  @IsString()
+  motivo!: string;
 }

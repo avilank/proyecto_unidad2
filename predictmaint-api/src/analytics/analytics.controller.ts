@@ -65,6 +65,12 @@ export class AnalyticsController {
     return this.analyticsService.getPredictionValidation(parseAnalyticsFilters(query));
   }
 
+  @Get('reliability')
+  @ApiOperation({ summary: 'MTTR y MTBF por máquina y global' })
+  getReliability(@Query() query: Record<string, string>) {
+    return this.analyticsService.getReliability(parseAnalyticsFilters(query));
+  }
+
   @Get('sensor-trend')
   @ApiOperation({ summary: 'Serie temporal de sensores' })
   getSensorTrend(

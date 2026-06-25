@@ -65,4 +65,10 @@ export function usePredictionValidation(filters: AnalyticsFilters) {
   );
 }
 
+export function useReliability(filters: AnalyticsFilters) {
+  return useSWR(['/analytics/reliability', filters], () =>
+    analyticsService.getReliability(filters),
+  );
+}
+
 export const useRepetitiveFaults = useRecurrentFaults;

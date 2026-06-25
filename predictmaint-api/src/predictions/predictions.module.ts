@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 import { AnalisisFallo } from '../database/models/analisis-fallo.model';
 import { ClasificacionFallo } from '../database/models/clasificacion-fallo.model';
+import { ConfiguracionAlertas } from '../database/models/configuracion-alertas.model';
 import { LecturaSensor } from '../database/models/lectura-sensor.model';
 import { ModeloMl } from '../database/models/modelo-ml.model';
 import { Orden } from '../database/models/orden.model';
@@ -22,6 +23,7 @@ import { PredictionsService } from './predictions.service';
       AnalisisFallo,
       ModeloMl,
       TipoFallo,
+      ConfiguracionAlertas,
     ]),
     MlGatewayModule,
     MlModelsModule,

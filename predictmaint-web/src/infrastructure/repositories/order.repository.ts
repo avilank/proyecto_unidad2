@@ -99,6 +99,13 @@ export class OrderRepository implements IOrderRepository {
     });
   }
 
+  reassign(orderId: string, tecnicoId: number, motivo: string): Promise<OrderDetail> {
+    return apiClient.post<OrderDetail>(`/orders/${orderId}/reassign`, {
+      tecnicoId,
+      motivo,
+    });
+  }
+
   startOrder(orderId: string): Promise<OrderDetail> {
     return apiClient.post<OrderDetail>(`/orders/${orderId}/start`);
   }

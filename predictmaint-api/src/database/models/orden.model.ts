@@ -61,6 +61,13 @@ export class Orden extends Model {
   @Column(DataType.TEXT)
   declare observaciones?: string;
 
+  /** Motivo de la última reasignación (supervisor). */
+  @Column(DataType.TEXT)
+  declare reasignadoMotivo?: string;
+
+  @Column(DataType.DATE)
+  declare reasignadoEn?: Date;
+
   @BelongsTo(() => AnalisisFallo)
   declare analisis?: AnalisisFallo;
 

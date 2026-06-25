@@ -7,8 +7,13 @@ import {
   PrediccionBinaria as PredBinEnum,
 } from '../common/enums';
 import { modeloSlug, resolveModeloId } from '../common/utils/modelo-ml.util';
+import {
+  nivelRiesgoFromScore,
+  riskThresholdsFromConfig,
+} from '../common/utils/risk-level.util';
 import { AnalisisFallo } from '../database/models/analisis-fallo.model';
 import { ClasificacionFallo } from '../database/models/clasificacion-fallo.model';
+import { ConfiguracionAlertas } from '../database/models/configuracion-alertas.model';
 import { LecturaSensor } from '../database/models/lectura-sensor.model';
 import { ModeloMl } from '../database/models/modelo-ml.model';
 import { Orden } from '../database/models/orden.model';
@@ -29,6 +34,8 @@ export class PredictionsService {
     @InjectModel(ClasificacionFallo) private readonly clasificacionModel: typeof ClasificacionFallo,
     @InjectModel(LecturaSensor) private readonly lecturaModel: typeof LecturaSensor,
     @InjectModel(AnalisisFallo) private readonly analisisModel: typeof AnalisisFallo,
+    @InjectModel(ConfiguracionAlertas)
+    private readonly configAlertasModel: typeof ConfiguracionAlertas,
     private readonly mlGateway: MlGatewayService,
     private readonly mlModelsService: MlModelsService,
   ) {}
@@ -157,10 +164,16 @@ export class PredictionsService {
           ...s1PredictionPatch(m),
         });
       }
+      const score = result.confianzaLider ?? result.ensembleAvg;
+      const cfg = await this.configAlertasModel.findOne();
+      const nivelRiesgo =
+        score != null
+          ? nivelRiesgoFromScore(Number(score), riskThresholdsFromConfig(cfg))
+          : result.nivelRiesgo;
       await this.analisisModel.update(
         {
-          ensembleAvg: result.confianzaLider ?? result.ensembleAvg,
-          nivelRiesgo: result.nivelRiesgo,
+          ensembleAvg: score,
+          nivelRiesgo,
         },
         { where: { idAnalisis: orden.idAnalisis } },
       );

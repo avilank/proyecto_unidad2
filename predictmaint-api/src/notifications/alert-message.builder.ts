@@ -22,6 +22,10 @@ export interface AlertMessageInput {
   ventanaDias?: number;
   intervencionesAnteriores?: InterventionHistoryItem[];
   enlaceAnalisis: string;
+  /** SLA en minutos para iniciar la orden (null = sin límite, p. ej. LOW). */
+  tiempoLimiteInicioMin?: number | null;
+  /** Umbral configurado para mostrar el aviso de fallo repetitivo. */
+  umbralRepetitivo?: number;
 }
 
 interface FaultMetric {
@@ -164,6 +168,8 @@ export function buildAlertMessageInput(params: {
   historial: InterventionHistoryItem[];
   ocurrenciasVentana: number;
   frontendUrl: string;
+  tiempoLimiteInicioMin?: number | null;
+  umbralRepetitivo?: number;
 }): AlertMessageInput {
   return {
     maquinaCodigo: params.maquinaCodigo,
@@ -172,6 +178,7 @@ export function buildAlertMessageInput(params: {
     tipoFalloCodigo: params.tipoFalloCodigo,
     tipoFalloNombre: params.tipoFalloNombre,
     lectura: params.lectura,
+    tiempoLimiteInicioMin: params.tiempoLimiteInicioMin ?? null,
     accionPrincipal: pickPrimaryAction(params.accionesRag),
     planEscalado: pickEscalatedPlan(
       params.nivelRiesgo,
@@ -182,6 +189,7 @@ export function buildAlertMessageInput(params: {
     ventanaDias: VENTANA_REPETITIVO_DIAS,
     intervencionesAnteriores: params.historial,
     enlaceAnalisis: `${params.frontendUrl}/dashboard/orders/${params.ordenCodigo}`,
+    umbralRepetitivo: params.umbralRepetitivo,
   };
 }
 
@@ -191,9 +199,10 @@ export function buildWhatsappSummary(input: AlertMessageInput): string {
 
   lines.push(`${emoji} *ALERTA — ${input.maquinaCodigo}*`);
 
+  const umbralRep = input.umbralRepetitivo ?? UMBRAL_REPETITIVO;
   if (
     input.ocurrenciasVentana != null &&
-    input.ocurrenciasVentana >= UMBRAL_REPETITIVO &&
+    input.ocurrenciasVentana >= umbralRep &&
     input.ventanaDias
   ) {
     const ordinal = input.ocurrenciasVentana === 3 ? '3er' : `${input.ocurrenciasVentana}º`;
@@ -220,6 +229,10 @@ export function buildWhatsappSummary(input: AlertMessageInput): string {
 
   lines.push('');
   lines.push(`*Orden:* ${input.ordenCodigo}`);
+
+  if (input.tiempoLimiteInicioMin != null) {
+    lines.push(`⏱️ *Iniciar antes de:* ${input.tiempoLimiteInicioMin} min`);
+  }
 
   if (input.intervencionesAnteriores?.length) {
     lines.push('');
@@ -256,7 +269,8 @@ export function buildEmailHtml(input: AlertMessageInput): string {
     .join('');
 
   const repetitivo =
-    input.ocurrenciasVentana != null && input.ocurrenciasVentana >= UMBRAL_REPETITIVO
+    input.ocurrenciasVentana != null &&
+    input.ocurrenciasVentana >= (input.umbralRepetitivo ?? UMBRAL_REPETITIVO)
       ? `<p style="color:#ea580c;font-weight:600">Fallo repetitivo: ${input.ocurrenciasVentana} ocurrencias de ${input.tipoFalloCodigo} en ${input.ventanaDias} días</p>`
       : '';
 
@@ -268,6 +282,7 @@ export function buildEmailHtml(input: AlertMessageInput): string {
       ${input.accionPrincipal ? `<p><strong>Acción recomendada:</strong> ${input.accionPrincipal}</p>` : ''}
       ${metricRows ? `<ul>${metricRows}</ul>` : ''}
       <p><strong>Orden:</strong> ${input.ordenCodigo}</p>
+      ${input.tiempoLimiteInicioMin != null ? `<p><strong>⏱️ Iniciar antes de:</strong> ${input.tiempoLimiteInicioMin} min</p>` : ''}
       ${historial ? `<p><strong>Intervenciones anteriores (${input.tipoFalloCodigo}):</strong></p><ul>${historial}</ul>` : ''}
       <p><a href="${input.enlaceAnalisis}" style="color:#2563eb">Ver plan y responder en el panel</a></p>
       ${input.planEscalado ? `<p style="background:#eff6ff;padding:12px;border-radius:8px;color:#1d4ed8"><strong>${input.planEscalado}</strong></p>` : ''}

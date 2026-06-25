@@ -14,6 +14,7 @@ import { PaginationQueryDto } from '../common/dto/pagination.dto';
 import {
   CreateOrderDto,
   EscalateOrderDto,
+  ReassignOrderDto,
   RegisterSolutionDto,
   RejectPredictionDto,
   UpdateOrderStatusDto,
@@ -101,6 +102,16 @@ export class OrdersController {
     @UserContext() user: AuthUserPayload,
   ) {
     return this.ordersService.rejectPrediction(id, dto, user);
+  }
+
+  @Post(':id/reassign')
+  @ApiOperation({ summary: 'Reasignar orden a otro técnico (supervisor)' })
+  reassign(
+    @Param('id') id: string,
+    @Body() dto: ReassignOrderDto,
+    @UserContext() user: AuthUserPayload,
+  ) {
+    return this.ordersService.reassignOrder(id, dto, user);
   }
 
   @Post(':id/escalate')

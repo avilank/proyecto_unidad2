@@ -1,6 +1,7 @@
 import { Inter } from 'next/font/google';
 import type { Metadata } from 'next';
 import { SwrProvider } from '@/presentation/providers/SwrProvider';
+import { ThemeProvider } from '@/presentation/providers/ThemeProvider';
 import './globals.css';
 
 const inter = Inter({
@@ -19,9 +20,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className={inter.variable}>
+    <html lang="es" className={inter.variable} suppressHydrationWarning>
       <body className="min-h-screen bg-bg font-sans antialiased">
-        <SwrProvider>{children}</SwrProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem={false}
+          themes={['light', 'dark']}
+          value={{ light: '', dark: 'dark' }}
+        >
+          <SwrProvider>{children}</SwrProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -90,6 +90,25 @@ export interface PredictionValidationRow {
   fecha: string;
 }
 
+export interface ReliabilityMachine {
+  maquinaId: string;
+  mttrHoras: number | null;
+  mtbfHoras: number | null;
+  reparaciones: number;
+  fallas: number;
+}
+
+export interface ReliabilityResponse {
+  global: {
+    mttrHoras: number | null;
+    mtbfHoras: number | null;
+    reparaciones: number;
+    fallas: number;
+  };
+  porMaquina: ReliabilityMachine[];
+  range?: string;
+}
+
 export interface SensorTrendPoint {
   timestamp: string;
   value: number;

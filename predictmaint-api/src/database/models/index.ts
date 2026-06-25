@@ -24,6 +24,7 @@ import { AuditLog } from './audit-log.model';
 import { MensajeEnviado } from './mensaje-enviado.model';
 import { ReglaNotificacion } from './regla-notificacion.model';
 import { FalloRepetitivo } from './fallo-repetitivo.model';
+import { AccionEscalada } from './accion-escalada.model';
 
 export const models = [
   Rol,
@@ -52,6 +53,7 @@ export const models = [
   MensajeEnviado,
   ReglaNotificacion,
   FalloRepetitivo,
+  AccionEscalada,
 ];
 
 export {
@@ -81,4 +83,5 @@ export {
   MensajeEnviado,
   ReglaNotificacion,
   FalloRepetitivo,
+  AccionEscalada,
 };

@@ -1,4 +1,39 @@
+/* Modo claro (por defecto del :root, se activa al quitar la clase .dark) */
 :root {
+  --color-bg-deep: #e9edf3;
+  --color-bg: #f5f7fb;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef1f6;
+  --color-ink: #1b2433;
+  --color-ink-soft: #4b5566;
+  --color-ink-muted: #6b7686;
+  --color-accent: #1f8fd6;
+  --color-accent-2: #1a7fc0;
+  --color-accent-deep: #166aa3;
+  --color-border: #dde3ec;
+  --color-border-soft: rgba(15, 23, 42, 0.08);
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+  --color-info: #1f8fd6;
+  --color-success-soft: rgba(22, 163, 74, 0.14);
+  --color-warning-soft: rgba(217, 119, 6, 0.14);
+  --color-danger-soft: rgba(220, 38, 38, 0.14);
+  --color-accent-soft: rgba(31, 143, 214, 0.14);
+  --color-ink-muted-soft: rgba(107, 118, 134, 0.14);
+  --color-risk-low: #16a34a;
+  --color-risk-medium: #d97706;
+  --color-risk-high: #ea580c;
+  --color-risk-critical: #dc2626;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --shadow-card: 0 4px 16px rgba(15, 23, 42, 0.08);
+  --shadow-pop: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+/* Modo oscuro (tema por defecto de la app) */
+.dark {
   --color-bg-deep: #0b0d14;
   --color-bg: #0c0e15;
   --color-surface: #151822;
@@ -24,9 +59,6 @@
   --color-risk-medium: #f59e0b;
   --color-risk-high: #fb923c;
   --color-risk-critical: #ef4444;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
   --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.35);
   --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45);
 }

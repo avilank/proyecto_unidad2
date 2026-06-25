@@ -8,7 +8,10 @@ import { Maquina } from '../database/models/maquina.model';
 import { Orden } from '../database/models/orden.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
 import { TechniciansModule } from '../technicians/technicians.module';
+import { ConfigCatalogModule } from '../config-catalog/config-catalog.module';
 import { AssignmentRetryService } from './assignment-retry.service';
+import { EscalationService } from './escalation.service';
+import { AutoFaultService } from './auto-fault.service';
 
 @Module({
   imports: [
@@ -22,7 +25,8 @@ import { AssignmentRetryService } from './assignment-retry.service';
       Maquina,
     ]),
     TechniciansModule,
+    ConfigCatalogModule,
   ],
-  providers: [AssignmentRetryService],
+  providers: [AssignmentRetryService, EscalationService, AutoFaultService],
 })
 export class JobsModule {}

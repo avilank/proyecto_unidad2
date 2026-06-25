@@ -58,6 +58,10 @@ export class OrderService {
     return orderRepository.rejectPrediction(orderId, justificacion);
   }
 
+  reassign(orderId: string, tecnicoId: number, motivo: string): Promise<OrderDetail> {
+    return orderRepository.reassign(orderId, tecnicoId, motivo);
+  }
+
   startOrder(orderId: string): Promise<OrderDetail> {
     return orderRepository.startOrder(orderId);
   }

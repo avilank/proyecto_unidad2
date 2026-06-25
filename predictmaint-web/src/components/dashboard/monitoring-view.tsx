@@ -62,6 +62,27 @@ const FLOW_STEPS = [
   },
 ];
 
+const RISK_VARIANT: Record<string, 'low' | 'medium' | 'high' | 'critical'> = {
+  LOW: 'low',
+  MEDIUM: 'medium',
+  HIGH: 'high',
+  CRITICAL: 'critical',
+};
+const RISK_LABEL: Record<string, string> = {
+  LOW: 'Bajo',
+  MEDIUM: 'Medio',
+  HIGH: 'Alto',
+  CRITICAL: 'Crítico',
+};
+
+function RiskLevelBadge({ nivel }: { nivel?: string | null }) {
+  if (!nivel) return null;
+  const key = String(nivel).toUpperCase();
+  const variant = RISK_VARIANT[key];
+  if (!variant) return null;
+  return <Badge variant={variant}>Nivel de Riesgo: {RISK_LABEL[key] ?? key}</Badge>;
+}
+
 const CARD_BG_FAULT = 'rgba(245, 158, 11, 0.06)';
 const CARD_BG_OK = 'rgba(255, 255, 255, 0.02)';
 const METRIC_BG_FAULT = 'rgba(245, 158, 11, 0.1)';
@@ -385,7 +406,10 @@ function MachineLiveCard({
           </div>
           <p className="mt-1 text-xs text-ink-soft">{note}</p>
         </div>
-        <MachineAlertBadge alert={alert} />
+        <div className="flex flex-col items-end gap-1.5">
+          <MachineAlertBadge alert={alert} />
+          {fault && <RiskLevelBadge nivel={alert?.nivel} />}
+        </div>
       </div>
 
       <div className="mt-1 grid grid-cols-3 gap-2">

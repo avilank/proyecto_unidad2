@@ -15,6 +15,7 @@ import { TipoFallo } from '../database/models/tipo-fallo.model';
 import { Usuario } from '../database/models/usuario.model';
 import { MachinesModule } from '../machines/machines.module';
 import { TechniciansModule } from '../technicians/technicians.module';
+import { ConfigCatalogModule } from '../config-catalog/config-catalog.module';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 
@@ -37,6 +38,7 @@ import { OrdersService } from './orders.service';
     ]),
     MachinesModule,
     TechniciansModule,
+    ConfigCatalogModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

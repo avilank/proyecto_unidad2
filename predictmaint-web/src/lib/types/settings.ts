@@ -7,6 +7,54 @@ export type DispatchScheduleItem = {
   auto: boolean;
 };
 
+export type TiemposAtencion = {
+  LOW: number | null;
+  MEDIUM: number | null;
+  HIGH: number | null;
+  CRITICAL: number | null;
+};
+
+export type RepetitiveThreshold = { veces: number; dias: number };
+
+export type RepetitiveFaultsConfig = {
+  umbrales: {
+    marcar: RepetitiveThreshold;
+    notificar: RepetitiveThreshold;
+    rag: RepetitiveThreshold;
+    ventanaDias: number;
+  };
+  notificaciones: {
+    mark: boolean;
+    supervisor: boolean;
+    rag: boolean;
+  };
+};
+
+export const DEFAULT_REPETITIVE_CONFIG: RepetitiveFaultsConfig = {
+  umbrales: {
+    marcar: { veces: 2, dias: 7 },
+    notificar: { veces: 3, dias: 7 },
+    rag: { veces: 2, dias: 7 },
+    ventanaDias: 7,
+  },
+  notificaciones: { mark: true, supervisor: true, rag: true },
+};
+
+export type EscalationAction = { tipoFallo: string; acciones: string };
+
+export type RepetitiveMachine = {
+  id: number;
+  maquinaId: string;
+  tipoFallo: string | null;
+  ocurrencias: number;
+  ventanaDias: number;
+  estado: string;
+  nivel: string | null;
+  ultimaAccion: string | null;
+  supervisorNotificado: boolean;
+  ultimaOcurrenciaEn: string | null;
+};
+
 export type SystemConfigResponse = {
   umbral_ensemble_falla: string;
   agreement_minimo_s3: string;
@@ -15,8 +63,56 @@ export type SystemConfigResponse = {
   riesgo_alto: string;
   riesgo_critico: string;
   tiempo_escalamiento: string;
+  tiempos_atencion: TiemposAtencion;
+  fallos_repetitivos: RepetitiveFaultsConfig;
   horarios_envio: DispatchScheduleItem[];
 };
+
+export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export type NotificationRule = {
+  nivel: RiskLevel | string;
+  recibe: string;
+  canal: string;
+};
+
+/** Opciones de canal que el backend de notificaciones interpreta por substring. */
+export const CHANNEL_OPTIONS: { value: string; label: string }[] = [
+  { value: '—', label: 'Sin notificación' },
+  { value: 'WhatsApp', label: 'WhatsApp' },
+  { value: 'Email', label: 'Email' },
+  { value: 'WhatsApp + Email', label: 'WhatsApp + Email' },
+];
+
+/** Destinatarios posibles por nivel (gobiernan a quién se notifica). */
+export const RECIBE_OPTIONS: string[] = [
+  'Nadie',
+  'Técnico asignado',
+  'Técnico + Supervisor',
+  'Supervisor',
+];
+
+/** Normaliza cualquier texto de destinatario a una de las opciones canónicas. */
+export function normalizeRecibe(recibe: string | null | undefined): string {
+  const r = (recibe ?? '').toLowerCase();
+  const tec = r.includes('técnico') || r.includes('tecnico');
+  const sup = r.includes('supervisor') || r.includes('jefe');
+  if (tec && sup) return 'Técnico + Supervisor';
+  if (tec) return 'Técnico asignado';
+  if (sup) return 'Supervisor';
+  return 'Nadie';
+}
+
+/** Normaliza cualquier texto de canal a una de las opciones canónicas. */
+export function normalizeChannel(canal: string | null | undefined): string {
+  const c = (canal ?? '').toLowerCase();
+  const wsp = c.includes('whats');
+  const email = c.includes('email') || c.includes('correo');
+  if (wsp && email) return 'WhatsApp + Email';
+  if (wsp) return 'WhatsApp';
+  if (email) return 'Email';
+  return '—';
+}
 
 export type AgreementMinimo = 'BAJO' | 'MEDIO' | 'ALTO';
 

@@ -10,6 +10,7 @@ import { FaultAnalyticsPanel } from '@/components/dashboard/analytics/fault-anal
 import { PredictionValidationPanel } from '@/components/dashboard/analytics/prediction-validation-panel';
 import { RagEffectivenessPanel } from '@/components/dashboard/analytics/rag-effectiveness-panel';
 import { RecurrencePanel } from '@/components/dashboard/analytics/recurrence-panel';
+import { ReliabilityPanel } from '@/components/dashboard/analytics/reliability-panel';
 import { UnattendedPanel } from '@/components/dashboard/analytics/unattended-panel';
 import {
   DEFAULT_LOG_FILTERS,
@@ -26,6 +27,7 @@ import {
   useFaultsByType,
   useMachineRecurrence,
   useNotificationLog,
+  useReliability,
   useUnattendedOrders,
 } from '@/presentation/hooks/useAnalytics';
 
@@ -46,6 +48,7 @@ export function AnalyticsView() {
   const faults = useFaultsByType(reportFilters);
   const recurrence = useMachineRecurrence(7, 2, reportFilters);
   const availability = useAvailability();
+  const reliability = useReliability(reportFilters);
   const notificationLog = useNotificationLog(50);
 
   const logs = notificationLog.data?.items;
@@ -78,6 +81,8 @@ export function AnalyticsView() {
         </div>
 
         <AvailabilityPanel data={availability.data} isLoading={availability.isLoading} />
+
+        <ReliabilityPanel data={reliability.data} isLoading={reliability.isLoading} />
 
         <PredictionValidationPanel
           filters={predictionFilters}

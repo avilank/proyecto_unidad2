@@ -64,9 +64,6 @@ export class TechniciansService {
       map.set(id, { maquinas: [], ordenesHoy: 0 });
     }
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-
     const activeOrders = await this.ordenModel.findAll({
       where: {
         idTecnico: { [Op.in]: tecnicoIds },
@@ -79,24 +76,13 @@ export class TechniciansService {
       if (!order.idTecnico) continue;
       const entry = map.get(order.idTecnico);
       if (!entry) continue;
+      // En la UI "Órdenes hoy" se usa como carga activa del técnico.
+      // Si tiene órdenes pendientes/en progreso asignadas, deben contarse aquí.
+      entry.ordenesHoy += 1;
       const codigo = order.maquina?.codigo;
       if (codigo && !entry.maquinas.includes(codigo)) {
         entry.maquinas.push(codigo);
       }
-    }
-
-    const todayCounts = await this.ordenModel.findAll({
-      where: {
-        idTecnico: { [Op.in]: tecnicoIds },
-        fechaCreacion: { [Op.gte]: todayStart },
-      },
-      attributes: ['idTecnico'],
-    });
-
-    for (const row of todayCounts) {
-      if (!row.idTecnico) continue;
-      const entry = map.get(row.idTecnico);
-      if (entry) entry.ordenesHoy += 1;
     }
 
     return map;
@@ -300,6 +286,18 @@ export class TechniciansService {
     const candidates = await this.findAvailable(nivelRiesgo, tipoFallo);
     if (!candidates.length) return null;
     const tecnico = await this.tecnicoModel.findByPk(candidates[0].id, {
+      include: [{ model: Usuario }, { model: EspecialidadModel }],
+    });
+    if (!tecnico) return null;
+    if (tecnico.disponibilidad === EstadoTecnico.DISPONIBLE) {
+      await tecnico.update({ disponibilidad: EstadoTecnico.EN_INTERVENCION });
+    }
+    return tecnico;
+  }
+
+  /** Asigna una orden a un técnico específico (reasignación por supervisor). */
+  async assignToOrder(tecnicoId: number): Promise<Tecnico | null> {
+    const tecnico = await this.tecnicoModel.findByPk(tecnicoId, {
       include: [{ model: Usuario }, { model: EspecialidadModel }],
     });
     if (!tecnico) return null;

@@ -15,6 +15,7 @@ import { Especialidad } from '../database/models/especialidad.model';
 import { Usuario } from '../database/models/usuario.model';
 import { RespuestaRecomendacion } from '../database/models/respuesta-recomendacion.model';
 import { OrdersModule } from '../orders/orders.module';
+import { ConfigCatalogModule } from '../config-catalog/config-catalog.module';
 import { AnalyticsController } from './analytics.controller';
 import { AnalyticsService } from './analytics.service';
 
@@ -37,6 +38,7 @@ import { AnalyticsService } from './analytics.service';
       RespuestaRecomendacion,
     ]),
     OrdersModule,
+    ConfigCatalogModule,
   ],
   controllers: [AnalyticsController],
   providers: [AnalyticsService],

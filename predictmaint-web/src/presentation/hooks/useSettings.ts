@@ -4,10 +4,34 @@ import useSWR, { mutate as globalMutate } from 'swr';
 import { configService, mlModelsService } from '@/application/services/config.service';
 import { technicianService } from '@/application/services/technician.service';
 import type { EtapaModelo } from '@/core/types';
-import type { DispatchScheduleItem } from '@/lib/types/settings';
+import type {
+  DispatchScheduleItem,
+  EscalationAction,
+  NotificationRule,
+  RepetitiveFaultsConfig,
+  TiemposAtencion,
+} from '@/lib/types/settings';
 
 export function useSystemConfig() {
   return useSWR('/config', () => configService.getConfig());
+}
+
+export function useNotificationRules() {
+  return useSWR('/catalog/notification-rules', () =>
+    configService.getNotificationRules(),
+  );
+}
+
+export function useEscalationActions() {
+  return useSWR('/catalog/escalation-actions', () =>
+    configService.getEscalationActions(),
+  );
+}
+
+export function useRepetitiveMachines() {
+  return useSWR('/repetitive-faults', () => configService.getRepetitiveMachines(), {
+    refreshInterval: 30000,
+  });
 }
 
 export function useMlModels(etapa: EtapaModelo) {
@@ -30,6 +54,46 @@ export function useSettingsMutations() {
       });
       await globalMutate('/config', result, false);
       return result;
+    },
+    saveAlertSettings: async (payload: {
+      riesgo_bajo: number;
+      riesgo_medio: number;
+      riesgo_alto: number;
+      riesgo_critico: number;
+      tiempos_atencion: TiemposAtencion;
+    }) => {
+      const result = await configService.saveConfig(payload);
+      await globalMutate('/config', result, false);
+      return result;
+    },
+    saveRepetitiveSettings: async (cfg: RepetitiveFaultsConfig) => {
+      const result = await configService.saveConfig({ fallos_repetitivos: cfg });
+      await globalMutate('/config', result, false);
+      return result;
+    },
+    saveEscalationActions: async (actions: EscalationAction[]) => {
+      let last: EscalationAction[] = actions;
+      for (const a of actions) {
+        last = await configService.saveEscalationAction(a.tipoFallo, a.acciones);
+      }
+      await globalMutate('/catalog/escalation-actions', last, false);
+      return last;
+    },
+    resolveRepetitiveFault: async (id: number, nota?: string) => {
+      const result = await configService.resolveRepetitiveMachine(id, nota);
+      await globalMutate('/repetitive-faults');
+      return result;
+    },
+    saveNotificationRules: async (rules: NotificationRule[]) => {
+      let last: NotificationRule[] = rules;
+      for (const rule of rules) {
+        last = await configService.saveNotificationRule(rule.nivel, {
+          recibe: rule.recibe,
+          canal: rule.canal,
+        });
+      }
+      await globalMutate('/catalog/notification-rules', last, false);
+      return last;
     },
     saveDispatchSchedule: async (items: DispatchScheduleItem[]) => {
       const result = await configService.saveDispatchSchedule(items);

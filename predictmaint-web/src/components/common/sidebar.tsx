@@ -11,10 +11,12 @@ import {
   LogOut,
   Radio,
   Settings,
+  UserCircle,
   Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
 import { Logo } from './logo';
+import { ThemeToggle } from './theme-toggle';
 import { authService } from '@/application/services/auth.service';
 import { useSessionStore } from '@/presentation/stores/sessionStore';
 import { RolUsuario } from '@/core/types';
@@ -93,6 +95,25 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      <div className="border-t border-border-soft">
+        <Link
+          href="/dashboard/profile"
+          className={cn(
+            'relative flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
+            pathname === '/dashboard/profile'
+              ? 'bg-accent/10 font-semibold text-accent'
+              : 'text-ink-soft hover:bg-surface-2 hover:text-ink',
+          )}
+        >
+          {pathname === '/dashboard/profile' && (
+            <span className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r bg-accent" />
+          )}
+          <UserCircle className="h-4 w-4 shrink-0" />
+          <span className="leading-tight">Perfil</span>
+        </Link>
+        <ThemeToggle />
+      </div>
 
       <div className="border-t border-border-soft px-4 py-3">
         <div className="flex items-center gap-3">

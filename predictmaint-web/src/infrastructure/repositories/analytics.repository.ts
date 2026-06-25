@@ -8,6 +8,7 @@ import type {
   PaginatedResponse,
   PredictionValidationRow,
   RecurrentMachineFault,
+  ReliabilityResponse,
   SensorTrendPoint,
   UnattendedOrder,
 } from '@/core/types/api';
@@ -80,6 +81,12 @@ export class AnalyticsRepository implements IAnalyticsRepository {
 
   getAvailability(): Promise<AvailabilitySnapshot> {
     return apiClient.get<AvailabilitySnapshot>('/analytics/availability');
+  }
+
+  getReliability(filters: AnalyticsFilters = { range: 'week' }): Promise<ReliabilityResponse> {
+    return apiClient.get<ReliabilityResponse>('/analytics/reliability', {
+      params: analyticsFiltersToParams(filters),
+    });
   }
 
   getPredictionValidation(filters: AnalyticsFilters = { range: 'month' }): Promise<PredictionValidationRow[]> {

@@ -54,6 +54,10 @@ export class AnalyticsService {
   getPredictionValidation(filters: AnalyticsFilters = { range: 'month' }) {
     return analyticsRepository.getPredictionValidation(filters);
   }
+
+  getReliability(filters: AnalyticsFilters = { range: 'week' }) {
+    return analyticsRepository.getReliability(filters);
+  }
 }
 
 export const analyticsService = new AnalyticsService();

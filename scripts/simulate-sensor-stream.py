@@ -361,19 +361,19 @@ def main():
     parser.add_argument(
         "--initial-delay",
         type=float,
-        default=15.0,
+        default=3.0,
         help="Segundos de espera antes del primer envío (batch inicial)",
     )
     parser.add_argument(
         "--min-delay",
         type=float,
-        default=8.0,
+        default=1.5,
         help="Segundos mínimos entre envíos",
     )
     parser.add_argument(
         "--max-delay",
         type=float,
-        default=8.0,
+        default=3.0,
         help="Segundos máximos entre envíos",
     )
     parser.add_argument("--seed", type=int, default=None, help="Semilla para reproducir secuencia")

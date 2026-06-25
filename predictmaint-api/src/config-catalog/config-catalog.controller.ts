@@ -53,6 +53,36 @@ export class CatalogController {
     return this.configCatalogService.patchRagSource(id, activa);
   }
 
+  @Get('notification-rules')
+  @ApiOperation({ summary: 'Reglas de notificación por nivel de riesgo' })
+  getNotificationRules() {
+    return this.configCatalogService.getNotificationRules();
+  }
+
+  @Patch('notification-rules/:nivel')
+  @ApiOperation({ summary: 'Actualizar regla de notificación (canal / destinatario)' })
+  patchNotificationRule(
+    @Param('nivel') nivel: string,
+    @Body() body: { recibe?: string; canal?: string },
+  ) {
+    return this.configCatalogService.patchNotificationRule(nivel, body);
+  }
+
+  @Get('escalation-actions')
+  @ApiOperation({ summary: 'Acciones escaladas por tipo de fallo' })
+  getEscalationActions() {
+    return this.configCatalogService.getEscalationActions();
+  }
+
+  @Patch('escalation-actions/:tipoFallo')
+  @ApiOperation({ summary: 'Actualizar acción escalada de un tipo de fallo' })
+  patchEscalationAction(
+    @Param('tipoFallo') tipoFallo: string,
+    @Body('acciones') acciones: string,
+  ) {
+    return this.configCatalogService.patchEscalationAction(tipoFallo, acciones);
+  }
+
   @Get('dispatch-schedule')
   @ApiOperation({ summary: 'Horarios de envío' })
   getDispatchSchedule() {

@@ -36,4 +36,12 @@ export class ConfiguracionAlertas extends Model {
 
   @Column(DataType.TEXT)
   declare horariosEnvioJson?: string;
+
+  /** Minutos de SLA por nivel de riesgo: { LOW, MEDIUM, HIGH, CRITICAL } (null = no aplica). */
+  @Column(DataType.TEXT)
+  declare tiemposAtencionJson?: string;
+
+  /** Config de fallos repetitivos: umbrales (veces/días) + toggles de notificación. */
+  @Column(DataType.TEXT)
+  declare fallosRepetitivosJson?: string;
 }

@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Op } from 'sequelize';
 import { DecisionPrediccion, EstadoOrden, EstadoAlerta, RolUsuario } from '../common/enums';
 import { paginate, PaginationQueryDto } from '../common/dto/pagination.dto';
@@ -32,12 +33,21 @@ import { Usuario } from '../database/models/usuario.model';
 import { MachinesService } from '../machines/machines.service';
 import { TechniciansService } from '../technicians/technicians.service';
 import {
+  ConfigCatalogService,
+  type TiemposAtencion,
+} from '../config-catalog/config-catalog.service';
+import {
   CreateOrderDto,
   EscalateOrderDto,
+  ReassignOrderDto,
   RegisterSolutionDto,
   RejectPredictionDto,
   UpdateOrderStatusDto,
 } from './dto/order.dto';
+import {
+  ORDER_CREATED_EVENT,
+  OrderCreatedPayload,
+} from '../common/events/order.events';
 import type { AuthUserPayload } from '../auth/auth.service';
 
 const VALID_TRANSITIONS: Record<EstadoOrden, EstadoOrden[]> = {
@@ -103,7 +113,15 @@ export class OrdersService {
     @InjectModel(Alerta) private readonly alertaModel: typeof Alerta,
     private readonly machinesService: MachinesService,
     private readonly techniciansService: TechniciansService,
+    private readonly configCatalog: ConfigCatalogService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
+
+  private async getSlaMinutos(nivel?: string): Promise<number | null> {
+    const tiempos = await this.configCatalog.getTiemposAtencion();
+    const sla = tiempos[(nivel ?? 'MEDIUM') as keyof TiemposAtencion];
+    return typeof sla === 'number' && sla > 0 ? sla : null;
+  }
 
   private isElevatedRole(user?: AuthUserPayload): boolean {
     return (
@@ -187,6 +205,8 @@ export class OrdersService {
       solucionDescripcion: ultimaSolucion?.descripcion ?? null,
       solucionTipo: ultimaSolucion?.tipoSolucion ?? null,
       observacionesOrden: o.observaciones ?? null,
+      reasignadoMotivo: o.reasignadoMotivo ?? null,
+      reasignadoEn: o.reasignadoEn ? o.reasignadoEn.toISOString() : null,
       observacionTecnica: ultimaObservacion
         ? {
             comentario: ultimaObservacion.comentario ?? null,
@@ -582,6 +602,80 @@ export class OrdersService {
       actor: 'sistema',
       fechaEvento: new Date(),
     });
+    return this.findOne(codigo, user);
+  }
+
+  /** Reasignación de una orden a otro técnico por parte del supervisor/jefe. */
+  async reassignOrder(codigo: string, dto: ReassignOrderDto, user?: AuthUserPayload) {
+    const o = await this.findOrderByCodigo(codigo);
+    if (!this.isElevatedRole(user)) {
+      throw new ForbiddenException('Solo un supervisor o jefe de planta puede reasignar');
+    }
+    if (o.estado === EstadoOrden.FINALIZADO || o.estado === EstadoOrden.RECHAZADA) {
+      throw new ConflictException('La orden ya está cerrada; no se puede reasignar');
+    }
+    if (o.estado !== EstadoOrden.PENDIENTE || o.fechaInicio) {
+      throw new ConflictException(
+        'Solo se puede reasignar una orden pendiente que aún no ha sido iniciada',
+      );
+    }
+    const sla = await this.getSlaMinutos(o.analisis?.nivelRiesgo);
+    if (sla == null) {
+      throw new ConflictException(
+        'Esta orden no tiene tiempo límite de inicio configurado para su nivel de riesgo',
+      );
+    }
+    const minutosSinAtender = Math.floor(
+      (Date.now() - new Date(o.fechaCreacion).getTime()) / 60_000,
+    );
+    if (minutosSinAtender < sla) {
+      throw new ConflictException(
+        `Aún no vence el tiempo límite para reasignar (faltan ${sla - minutosSinAtender} min)`,
+      );
+    }
+    const motivo = dto.motivo?.trim();
+    if (!motivo) throw new BadRequestException('El motivo de la reasignación es obligatorio');
+
+    const nuevo = await this.techniciansService.assignToOrder(dto.tecnicoId);
+    if (!nuevo) throw new NotFoundException('Técnico destino no encontrado');
+    if (o.idTecnico === nuevo.idTecnico) {
+      throw new ConflictException('La orden ya está asignada a ese técnico');
+    }
+
+    const prevTecnicoId = o.idTecnico;
+    const now = new Date();
+    await o.update({
+      idTecnico: nuevo.idTecnico,
+      estado: EstadoOrden.PENDIENTE,
+      fechaInicio: undefined,
+      proximoReintentoAsignacion: undefined,
+      reasignadoMotivo: motivo,
+      reasignadoEn: now,
+    });
+    await this.alertaModel.update(
+      { idTecnico: nuevo.idTecnico, estado: EstadoAlerta.PENDIENTE },
+      { where: { idOrden: o.idOrden, estado: { [Op.ne]: EstadoAlerta.FINALIZADO } } },
+    );
+    await this.eventoModel.create({
+      idOrden: o.idOrden,
+      etapa: 'reasignacion',
+      descripcion: `Reasignado a ${tecnicoNombre(nuevo)}: ${motivo}`,
+      actor: 'supervisor',
+      fechaEvento: now,
+    });
+    if (prevTecnicoId && prevTecnicoId !== nuevo.idTecnico) {
+      await this.techniciansService.releaseIfIdle(prevTecnicoId);
+    }
+
+    // Notifica al nuevo técnico (reusa el flujo de asignación).
+    const payload: OrderCreatedPayload = {
+      orderId: o.codigo,
+      tecnicoId: nuevo.idTecnico,
+      maquinaId: o.maquina?.codigo ?? String(o.idMaquina),
+      nivelRiesgo: o.analisis?.nivelRiesgo ?? 'MEDIUM',
+    };
+    this.eventEmitter.emit(ORDER_CREATED_EVENT, payload);
+
     return this.findOne(codigo, user);
   }
 }

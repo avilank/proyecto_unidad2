@@ -8,6 +8,7 @@ import { MensajeEnviado } from '../database/models/mensaje-enviado.model';
 import { Orden } from '../database/models/orden.model';
 import { RecomendacionRag } from '../database/models/recomendacion-rag.model';
 import { ReglaNotificacion } from '../database/models/regla-notificacion.model';
+import { Rol } from '../database/models/rol.model';
 import { SolucionAplicada } from '../database/models/solucion-aplicada.model';
 import { Tecnico } from '../database/models/tecnico.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
@@ -15,16 +16,20 @@ import { Usuario } from '../database/models/usuario.model';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 import { OrderNotificationListener } from './order-notification.listener';
+import { EscalationNotificationListener } from './escalation-notification.listener';
 import { WebhookNotifierService } from './webhook-notifier.service';
 import { EmailModule } from '../integrations/email/email.module';
+import { ConfigCatalogModule } from '../config-catalog/config-catalog.module';
 
 @Module({
   imports: [
     EmailModule,
+    ConfigCatalogModule,
     SequelizeModule.forFeature([
       Orden,
       Tecnico,
       Usuario,
+      Rol,
       MensajeEnviado,
       ReglaNotificacion,
       RecomendacionRag,
@@ -41,6 +46,7 @@ import { EmailModule } from '../integrations/email/email.module';
     NotificationsService,
     WebhookNotifierService,
     OrderNotificationListener,
+    EscalationNotificationListener,
   ],
   exports: [NotificationsService],
 })

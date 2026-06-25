@@ -26,6 +26,7 @@ import { findMaquinaByCodigo } from '../common/utils/maquina.util';
 import { latestRagEstado } from '../common/utils/rag-estado.util';
 import { tecnicoNombre } from '../common/utils/tecnico-display.util';
 import { OrdersService } from '../orders/orders.service';
+import { ConfigCatalogService } from '../config-catalog/config-catalog.service';
 import {
   ParsedAnalyticsFilters,
   resolveDateRange,
@@ -59,6 +60,7 @@ export class AnalyticsService {
     @InjectModel(LecturaSensor) private readonly lecturaSensorModel: typeof LecturaSensor,
     @InjectModel(ModeloMl) private readonly modeloMlModel: typeof ModeloMl,
     private readonly ordersService: OrdersService,
+    private readonly configCatalog: ConfigCatalogService,
   ) {}
 
   private startOfDay(d = new Date()) {
@@ -464,8 +466,10 @@ export class AnalyticsService {
   }
 
   async getRecurrentMachines() {
-    const ventanaDias = 7;
-    const umbral = 3;
+    // Umbrales configurables (Configuración → Fallos Repetitivos).
+    const repCfg = await this.configCatalog.getFallosRepetitivosConfig();
+    const ventanaDias = repCfg.umbrales.ventanaDias;
+    const umbral = repCfg.umbrales.notificar.veces;
     const from = new Date(Date.now() - ventanaDias * 24 * 60 * 60 * 1000);
 
     const ordenes = await this.ordenModel.findAll({
@@ -501,6 +505,82 @@ export class AnalyticsService {
         ventanaDias,
         escalado: true,
       }));
+  }
+
+  /**
+   * MTTR (tiempo medio de reparación) y MTBF (tiempo medio entre fallas), por máquina y global.
+   * MTTR = promedio de (fechaFin − fechaInicio) en órdenes finalizadas.
+   * MTBF = promedio de los intervalos entre detecciones consecutivas de la misma máquina.
+   */
+  async getReliability(filters: ParsedAnalyticsFilters) {
+    const { from, to } = resolveDateRange(filters);
+
+    const where: Record<string, unknown> = {
+      fechaCreacion: { [Op.gte]: from, [Op.lte]: to },
+      idTecnico: { [Op.ne]: null },
+    };
+    if (filters.tecnicoId) where.idTecnico = filters.tecnicoId;
+    if (filters.maquinaId) {
+      const m = await findMaquinaByCodigo(filters.maquinaId);
+      if (m) where.idMaquina = m.idMaquina;
+    }
+
+    const ordenes = await this.ordenModel.findAll({
+      where,
+      attributes: ['idMaquina', 'estado', 'fechaCreacion', 'fechaInicio', 'fechaFin'],
+      include: [{ model: Maquina, attributes: ['codigo'] }],
+      order: [['fechaCreacion', 'ASC']],
+    });
+
+    const porMaquinaMap = new Map<string, { repairMs: number[]; detTimes: number[] }>();
+    for (const o of ordenes) {
+      const codigo = o.maquina?.codigo ?? String(o.idMaquina);
+      const entry = porMaquinaMap.get(codigo) ?? { repairMs: [], detTimes: [] };
+      entry.detTimes.push(new Date(o.fechaCreacion).getTime());
+      if (o.estado === EstadoOrden.FINALIZADO && o.fechaFin) {
+        const start = o.fechaInicio ?? o.fechaCreacion;
+        const ms = new Date(o.fechaFin).getTime() - new Date(start).getTime();
+        if (ms > 0) entry.repairMs.push(ms);
+      }
+      porMaquinaMap.set(codigo, entry);
+    }
+
+    const H = 1000 * 60 * 60;
+    const avg = (xs: number[]) =>
+      xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+    const toH = (ms: number | null) =>
+      ms != null ? Math.round((ms / H) * 10) / 10 : null;
+
+    const allRepair: number[] = [];
+    const allGaps: number[] = [];
+
+    const porMaquina = [...porMaquinaMap.entries()]
+      .map(([maquinaId, e]) => {
+        const sorted = [...e.detTimes].sort((a, b) => a - b);
+        const gaps: number[] = [];
+        for (let i = 1; i < sorted.length; i++) gaps.push(sorted[i] - sorted[i - 1]);
+        allRepair.push(...e.repairMs);
+        allGaps.push(...gaps);
+        return {
+          maquinaId,
+          mttrHoras: toH(avg(e.repairMs)),
+          mtbfHoras: toH(avg(gaps)),
+          reparaciones: e.repairMs.length,
+          fallas: e.detTimes.length,
+        };
+      })
+      .sort((a, b) => b.fallas - a.fallas);
+
+    return {
+      global: {
+        mttrHoras: toH(avg(allRepair)),
+        mtbfHoras: toH(avg(allGaps)),
+        reparaciones: allRepair.length,
+        fallas: porMaquina.reduce((s, m) => s + m.fallas, 0),
+      },
+      porMaquina,
+      range: filters.range,
+    };
   }
 
   async getSensorTrend(variable: string, hours: number, maquinaId?: string) {

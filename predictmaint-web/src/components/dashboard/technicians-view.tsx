@@ -134,7 +134,7 @@ export function TechniciansView() {
                   },
                   {
                     key: 'ordenes',
-                    header: 'Órdenes hoy',
+                    header: 'Órdenes',
                     className: 'whitespace-nowrap',
                     render: (t) => (
                       <span className="text-[11px] text-ink-soft">

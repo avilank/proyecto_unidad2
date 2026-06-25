@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Topbar } from '@/components/common/topbar';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import { Input } from '@/components/ui/input';
 import { KpiCard } from '@/components/ui/kpi-card';
@@ -13,11 +13,15 @@ import { StatusPill } from '@/components/ui/status-pill';
 import { TableSkeleton } from '@/components/ui/skeleton';
 import { useOrders } from '@/presentation/hooks/useOrders';
 import { useMachines } from '@/presentation/hooks/useMachines';
+import { useTechnicians } from '@/presentation/hooks/useTechnicians';
+import { useSystemConfig } from '@/presentation/hooks/useSettings';
+import { useSessionStore } from '@/presentation/stores/sessionStore';
 import { orderService } from '@/application/services/order.service';
 import type { OrderQuery } from '@/infrastructure/repositories/order.repository';
 import type { Order } from '@/core/entities';
-import { EstadoOrden, SolucionTipo, TipoFallo } from '@/core/types';
-import { ClipboardList, Clock3, FileCheck2, ThumbsDown } from 'lucide-react';
+import type { TiemposAtencion } from '@/lib/types/settings';
+import { EstadoOrden, RolUsuario, SolucionTipo, TipoFallo } from '@/core/types';
+import { ClipboardList, Clock3, FileCheck2, ThumbsDown, UserCog, X } from 'lucide-react';
 
 const ESTADOS = Object.values(EstadoOrden);
 const TIPOS_FALLO = Object.values(TipoFallo);
@@ -37,6 +41,41 @@ export function OrdersHistoryView() {
   });
 
   const machines = useMachines();
+  const systemConfig = useSystemConfig();
+  const tiemposAtencion = systemConfig.data?.tiempos_atencion;
+
+  const user = useSessionStore((s) => s.user);
+  const isElevated =
+    user?.rol === RolUsuario.SUPERVISOR || user?.rol === RolUsuario.JEFE_PLANTA;
+  const technicians = useTechnicians();
+
+  const [reassignTarget, setReassignTarget] = useState<Order | null>(null);
+  const [reassignTecnico, setReassignTecnico] = useState<number | ''>('');
+  const [reassignMotivo, setReassignMotivo] = useState('');
+  const [reassigning, setReassigning] = useState(false);
+
+  const closeReassign = () => {
+    if (reassigning) return;
+    setReassignTarget(null);
+    setReassignTecnico('');
+    setReassignMotivo('');
+  };
+
+  const handleReassign = async () => {
+    if (!reassignTarget || !reassignTecnico || !reassignMotivo.trim()) return;
+    setReassigning(true);
+    try {
+      await orderService.reassign(reassignTarget.id, Number(reassignTecnico), reassignMotivo.trim());
+      await orders.mutate();
+      setReassignTarget(null);
+      setReassignTecnico('');
+      setReassignMotivo('');
+    } catch {
+      alert('No se pudo reasignar la orden');
+    } finally {
+      setReassigning(false);
+    }
+  };
 
   const dateRange = useMemo(() => {
     if (!monthFilter) return {};
@@ -69,6 +108,20 @@ export function OrdersHistoryView() {
   const list = orders.data?.items ?? [];
   const total = orders.data?.total ?? 0;
   const summary = orders.data?.summary;
+  const activeOrders = useMemo(
+    () =>
+      list.filter(
+        (o) => o.estado === EstadoOrden.PENDIENTE || o.estado === EstadoOrden.EN_PROGRESO,
+      ),
+    [list],
+  );
+  const reassignableOrders = useMemo(
+    () => activeOrders.filter((o) => canReassignBySla(o, tiemposAtencion)),
+    [activeOrders, tiemposAtencion],
+  );
+  const technicianOptions = (technicians.data ?? []).filter(
+    (t) => t.id !== reassignTarget?.tecnicoId,
+  );
 
   const pending = summary?.pendiente ?? 0;
   const inProgress = summary?.enProgreso ?? 0;
@@ -95,10 +148,12 @@ export function OrdersHistoryView() {
         'Algoritmo',
         'Confianza',
         'Detectado',
+        'Límite inicio',
         'Inicio',
         'Término',
         'Duración',
         'Tipo solución',
+        'Reasignado — Motivo',
         'Estado',
       ];
       const rows = all.map((r) => [
@@ -109,10 +164,12 @@ export function OrdersHistoryView() {
         r.algoritmoClasificador ?? '',
         confianzaS1Value(r)?.toFixed(1) ?? '',
         r.detectadoEn,
+        limiteInicioDate(r, tiemposAtencion)?.toISOString() ?? '',
         r.iniciadoEn ?? '',
         r.finalizadoEn ?? '',
         formatOrderDuration(r) ?? '',
         formatTipoSolucion(r.solucionTipo),
+        formatReassignCell(r),
         r.estado,
       ]);
       const csv = [header, ...rows]
@@ -143,7 +200,11 @@ export function OrdersHistoryView() {
       <Topbar
         flush
         title="Historial de Mantenimiento"
-        subtitle="Solo órdenes con técnico asignado · paginado por fecha"
+        subtitle={
+          isElevated
+            ? 'Panel de órdenes · reasignación solo tras vencer el límite de inicio'
+            : 'Solo órdenes con técnico asignado · paginado por fecha'
+        }
       />
 
       <div className="flex flex-col gap-4 px-6 pb-6 pt-5">
@@ -213,6 +274,49 @@ export function OrdersHistoryView() {
         <KpiCard icon={ThumbsDown} value={rejected} label="Rechazada" tone="danger" />
       </div>
 
+      {isElevated && !orders.isLoading && reassignableOrders.length > 0 && (
+        <Card className="border-accent/30">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <UserCog className="h-4 w-4 text-accent" />
+              Órdenes vencidas — reasignación
+            </CardTitle>
+            <p className="text-xs text-ink-muted">
+              {reassignableOrders.length} orden(es) con límite de inicio vencido
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2 pt-0">
+            {reassignableOrders.map((order) => (
+              <div
+                key={order.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-2/40 px-4 py-3"
+              >
+                <div className="min-w-0">
+                  <p className="font-semibold text-ink">
+                    {order.id} · {order.maquinaId}
+                  </p>
+                  <p className="text-xs text-ink-muted">
+                    {order.tecnico?.nombre ?? `#${order.tecnicoId}`} ·{' '}
+                    {order.estado.replace('_', ' ')} · {order.tipoFallo ?? '—'}
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setReassignTarget(order);
+                    setReassignTecnico('');
+                    setReassignMotivo('');
+                  }}
+                >
+                  Reasignar
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardContent className="p-0">
           {orders.isLoading ? (
@@ -264,6 +368,39 @@ export function OrdersHistoryView() {
                       }),
                   },
                   {
+                    key: 'limiteInicio',
+                    header: 'Límite inicio',
+                    render: (r) => {
+                      const deadline = limiteInicioDate(r, tiemposAtencion);
+                      if (!deadline) return <span className="text-ink-muted">—</span>;
+                      return <span className="text-ink-soft">{fmtDateTime(deadline)}</span>;
+                    },
+                  },
+                  {
+                    key: 'reasignado',
+                    header: 'Reasignado — Motivo',
+                    render: (r) => {
+                      if (!r.reasignadoMotivo) {
+                        return <span className="text-ink-muted">—</span>;
+                      }
+                      return (
+                        <div className="max-w-[220px] leading-tight">
+                          <span className="block text-sm text-ink">
+                            {r.tecnico?.nombre ?? `#${r.tecnicoId}`}
+                          </span>
+                          <span className="mt-0.5 block text-xs text-ink-muted">
+                            {r.reasignadoMotivo}
+                          </span>
+                          {r.reasignadoEn && (
+                            <span className="mt-0.5 block text-[11px] text-ink-muted">
+                              {fmtDateTime(new Date(r.reasignadoEn))}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    },
+                  },
+                  {
                     key: 'inicio',
                     header: 'Inicio',
                     render: (r) =>
@@ -312,14 +449,34 @@ export function OrdersHistoryView() {
                   {
                     key: 'acc',
                     header: 'Acciones',
-                    render: (r) => (
-                      <Link
-                        href={`/dashboard/orders/${r.id}`}
-                        className="text-accent hover:underline"
-                      >
-                        Ver
-                      </Link>
-                    ),
+                    render: (r) => {
+                      const canReassign =
+                        isElevated &&
+                        canReassignBySla(r, tiemposAtencion);
+                      return (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link
+                            href={`/dashboard/orders/${r.id}`}
+                            className="text-accent hover:underline"
+                          >
+                            Ver
+                          </Link>
+                          {canReassign && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReassignTarget(r);
+                                setReassignTecnico('');
+                                setReassignMotivo('');
+                              }}
+                              className="text-xs font-semibold text-warning hover:underline"
+                            >
+                              Reasignar
+                            </button>
+                          )}
+                        </div>
+                      );
+                    },
                   },
                 ]}
               />
@@ -334,6 +491,72 @@ export function OrdersHistoryView() {
           )}
         </CardContent>
       </Card>
+
+      {reassignTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+          <div
+            className="w-full max-w-[480px] rounded-xl bg-surface shadow-pop [color-scheme:dark]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between px-5 pt-5">
+              <div>
+                <h2 className="text-base font-semibold text-ink">Reasignar orden</h2>
+                <p className="mt-0.5 text-xs text-ink-muted">
+                  {reassignTarget.id} · {reassignTarget.maquinaId} ·{' '}
+                  {reassignTarget.tecnico?.nombre ?? `#${reassignTarget.tecnicoId}`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeReassign}
+                disabled={reassigning}
+                className="rounded-md p-1 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+                aria-label="Cerrar"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 px-5 py-4">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-ink-muted">Nuevo técnico</span>
+                <select
+                  className="h-10 rounded-md border border-border bg-bg px-3 text-sm text-ink"
+                  value={reassignTecnico}
+                  onChange={(e) =>
+                    setReassignTecnico(e.target.value ? Number(e.target.value) : '')
+                  }
+                >
+                  <option value="">Seleccionar técnico…</option>
+                  {technicianOptions.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.nombre} · {t.especialidad}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Input
+                label="Motivo de reasignación"
+                placeholder="Ej: técnico de turno no disponible"
+                value={reassignMotivo}
+                onChange={(e) => setReassignMotivo(e.target.value)}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-border-soft px-5 py-4">
+              <Button variant="secondary" onClick={closeReassign} disabled={reassigning}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => void handleReassign()}
+                disabled={reassigning || !reassignTecnico || !reassignMotivo.trim()}
+              >
+                {reassigning ? 'Reasignando…' : 'Confirmar reasignación'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );
@@ -368,6 +591,44 @@ function FilterSelect({
   );
 }
 
+function slaMinForOrder(
+  tiempos: TiemposAtencion | undefined,
+  nivel: string,
+): number | null {
+  if (!tiempos) return null;
+  const v = tiempos[nivel as keyof TiemposAtencion];
+  return v ?? null;
+}
+
+function limiteInicioDate(
+  order: Pick<Order, 'detectadoEn' | 'nivelRiesgo'>,
+  tiempos: TiemposAtencion | undefined,
+): Date | null {
+  const sla = slaMinForOrder(tiempos, order.nivelRiesgo);
+  if (sla == null) return null;
+  return new Date(new Date(order.detectadoEn).getTime() + sla * 60_000);
+}
+
+function canReassignBySla(
+  order: Pick<Order, 'estado' | 'iniciadoEn' | 'detectadoEn' | 'nivelRiesgo'>,
+  tiempos: TiemposAtencion | undefined,
+): boolean {
+  if (order.estado !== EstadoOrden.PENDIENTE) return false;
+  if (order.iniciadoEn) return false;
+  const limite = limiteInicioDate(order, tiempos);
+  if (!limite) return false;
+  return Date.now() >= limite.getTime();
+}
+
+function fmtDateTime(d: Date): string {
+  return d.toLocaleString('es-PE', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function confianzaS1Value(
   r: Pick<Order, 'confianzaPrediccion' | 'confianzaLider' | 'ensembleAvg'>,
 ): number | null {
@@ -380,6 +641,12 @@ function confianzaS1Value(
 function formatConfianzaS1(r: Pick<Order, 'confianzaPrediccion' | 'confianzaLider' | 'ensembleAvg'>) {
   const value = confianzaS1Value(r);
   return value != null ? `${value.toFixed(1)}%` : '—';
+}
+
+function formatReassignCell(r: Pick<Order, 'tecnico' | 'tecnicoId' | 'reasignadoMotivo'>) {
+  if (!r.reasignadoMotivo) return '';
+  const nombre = r.tecnico?.nombre ?? `#${r.tecnicoId}`;
+  return `${nombre} — ${r.reasignadoMotivo}`;
 }
 
 function formatTipoSolucion(tipo?: SolucionTipo | string | null): string {

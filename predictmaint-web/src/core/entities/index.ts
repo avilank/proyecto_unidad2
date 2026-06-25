@@ -127,6 +127,8 @@ export interface Order {
   solucionDescripcion: string | null;
   solucionTipo: SolucionTipo | null;
   observacionesOrden?: string | null;
+  reasignadoMotivo?: string | null;
+  reasignadoEn?: string | null;
   observacionTecnica?: {
     comentario: string | null;
     esFalla: boolean | null;

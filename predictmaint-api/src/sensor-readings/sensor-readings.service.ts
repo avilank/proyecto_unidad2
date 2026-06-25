@@ -52,6 +52,10 @@ import { MachinesService } from '../machines/machines.service';
 import { OrdersService } from '../orders/orders.service';
 import { TechniciansService } from '../technicians/technicians.service';
 import { CreateSensorReadingDto } from './dto/create-sensor-reading.dto';
+import {
+  nivelRiesgoFromScore,
+  riskThresholdsFromConfig,
+} from '../common/utils/risk-level.util';
 
 @Injectable()
 export class SensorReadingsService {
@@ -132,6 +136,15 @@ export class SensorReadingsService {
   private async getAgreementMinimo(): Promise<string> {
     const cfg = await this.configAlertasModel.findOne();
     return cfg?.agreementMinimoS3 ?? 'MEDIO';
+  }
+
+  /**
+   * Calcula el nivel de riesgo a partir del score del modelo (0-1) usando los
+   * umbrales configurados en `configuracion_alertas` (Configuración → Alertas).
+   */
+  private async computeNivelRiesgo(score: number): Promise<NivelRiesgo> {
+    const cfg = await this.configAlertasModel.findOne();
+    return nivelRiesgoFromScore(score, riskThresholdsFromConfig(cfg));
   }
 
   private getCooldownMinutos(): number {
@@ -368,8 +381,13 @@ export class SensorReadingsService {
     };
 
     const predictResult = await this.mlGateway.predict(features);
-    const nivelRiesgo = (predictResult.nivelRiesgo as NivelRiesgo) ?? NivelRiesgo.MEDIUM;
     const scoreLider = predictResult.confianzaLider ?? predictResult.ensembleAvg;
+    // El nivel de riesgo se calcula con los umbrales de Configuración → Alertas,
+    // no con el que devuelve el ML (así la configuración sí influye).
+    const nivelRiesgo =
+      scoreLider != null
+        ? await this.computeNivelRiesgo(Number(scoreLider))
+        : ((predictResult.nivelRiesgo as NivelRiesgo) ?? NivelRiesgo.MEDIUM);
     const liderS1 = predictResult.modelos.find((m) => m.esLider);
 
     for (const m of predictResult.modelos) {

@@ -3,11 +3,47 @@
 import { useEffect, useState } from 'react';
 import { Topbar } from '@/components/common/topbar';
 import { Button } from '@/components/ui/button';
+import {
+  AlertsSettingsTab,
+  invalidThresholdLevels,
+  type ThresholdMap,
+} from '@/components/dashboard/settings/alerts-settings-tab';
 import { MlModelsSettingsTab } from '@/components/dashboard/settings/ml-models-settings-tab';
 import { MessageDispatchSettingsTab } from '@/components/dashboard/settings/message-dispatch-settings-tab';
-import type { AgreementMinimo, DispatchScheduleItem } from '@/lib/types/settings';
-import { useDispatchSchedule, useSettingsMutations, useSystemConfig } from '@/presentation/hooks/useSettings';
+import { RepetitiveFaultsSettingsTab } from '@/components/dashboard/settings/repetitive-faults-settings-tab';
+import {
+  normalizeChannel,
+  normalizeRecibe,
+  DEFAULT_REPETITIVE_CONFIG,
+  type AgreementMinimo,
+  type DispatchScheduleItem,
+  type EscalationAction,
+  type NotificationRule,
+  type RepetitiveFaultsConfig,
+  type TiemposAtencion,
+} from '@/lib/types/settings';
+import {
+  useDispatchSchedule,
+  useEscalationActions,
+  useNotificationRules,
+  useSettingsMutations,
+  useSystemConfig,
+} from '@/presentation/hooks/useSettings';
 import { cn } from '@/lib/utils/cn';
+
+const DEFAULT_THRESHOLDS: ThresholdMap = {
+  LOW: 0.4,
+  MEDIUM: 0.65,
+  HIGH: 0.85,
+  CRITICAL: 1.0,
+};
+
+const DEFAULT_TIEMPOS_ATENCION: TiemposAtencion = {
+  LOW: null,
+  MEDIUM: 120,
+  HIGH: 30,
+  CRITICAL: 15,
+};
 
 type SettingsTab = 'ml' | 'messages' | 'rag' | 'alerts' | 'recurrent';
 
@@ -15,8 +51,8 @@ const TABS: { id: SettingsTab; label: string; ready: boolean }[] = [
   { id: 'ml', label: 'Modelos ML', ready: true },
   { id: 'messages', label: 'Envío de Mensajes', ready: true },
   { id: 'rag', label: 'RAG', ready: false },
-  { id: 'alerts', label: 'Alertas', ready: false },
-  { id: 'recurrent', label: 'Fallos Repetitivos', ready: false },
+  { id: 'alerts', label: 'Alertas', ready: true },
+  { id: 'recurrent', label: 'Fallos Repetitivos', ready: true },
 ];
 
 export function SettingsView() {
@@ -26,11 +62,20 @@ export function SettingsView() {
 
   const config = useSystemConfig();
   const schedule = useDispatchSchedule();
+  const notificationRules = useNotificationRules();
+  const escalationActions = useEscalationActions();
   const mutations = useSettingsMutations();
 
   const [umbral, setUmbral] = useState(0.5);
   const [agreement, setAgreement] = useState<AgreementMinimo>('MEDIO');
   const [scheduleItems, setScheduleItems] = useState<DispatchScheduleItem[]>([]);
+  const [thresholds, setThresholds] = useState<ThresholdMap>(DEFAULT_THRESHOLDS);
+  const [tiemposAtencion, setTiemposAtencion] = useState<TiemposAtencion>(DEFAULT_TIEMPOS_ATENCION);
+  const [notifRules, setNotifRules] = useState<NotificationRule[]>([]);
+  const [repetitiveConfig, setRepetitiveConfig] = useState<RepetitiveFaultsConfig>(
+    DEFAULT_REPETITIVE_CONFIG,
+  );
+  const [escalationItems, setEscalationItems] = useState<EscalationAction[]>([]);
 
   useEffect(() => {
     if (config.data) {
@@ -42,12 +87,40 @@ export function SettingsView() {
       if (config.data.horarios_envio?.length) {
         setScheduleItems(config.data.horarios_envio);
       }
+      setThresholds({
+        LOW: parseFloat(config.data.riesgo_bajo) || DEFAULT_THRESHOLDS.LOW,
+        MEDIUM: parseFloat(config.data.riesgo_medio) || DEFAULT_THRESHOLDS.MEDIUM,
+        HIGH: parseFloat(config.data.riesgo_alto) || DEFAULT_THRESHOLDS.HIGH,
+        CRITICAL: parseFloat(config.data.riesgo_critico) || DEFAULT_THRESHOLDS.CRITICAL,
+      });
+      if (config.data.tiempos_atencion) {
+        setTiemposAtencion({ ...DEFAULT_TIEMPOS_ATENCION, ...config.data.tiempos_atencion });
+      }
+      if (config.data.fallos_repetitivos) {
+        setRepetitiveConfig(config.data.fallos_repetitivos);
+      }
     }
   }, [config.data]);
 
   useEffect(() => {
+    if (escalationActions.data?.length) setEscalationItems(escalationActions.data);
+  }, [escalationActions.data]);
+
+  useEffect(() => {
     if (schedule.data?.length) setScheduleItems(schedule.data);
   }, [schedule.data]);
+
+  useEffect(() => {
+    if (notificationRules.data?.length) {
+      setNotifRules(
+        notificationRules.data.map((r) => ({
+          ...r,
+          canal: normalizeChannel(r.canal),
+          recibe: normalizeRecibe(r.recibe),
+        })),
+      );
+    }
+  }, [notificationRules.data]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -60,6 +133,26 @@ export function SettingsView() {
         });
       } else if (tab === 'messages' && scheduleItems.length) {
         await mutations.saveDispatchSchedule(scheduleItems);
+      } else if (tab === 'alerts') {
+        if (invalidThresholdLevels(thresholds).size > 0) {
+          setToast('Revisa los umbrales: deben crecer en orden (LOW < MEDIUM < HIGH < CRITICAL ≤ 1).');
+          return;
+        }
+        await mutations.saveAlertSettings({
+          riesgo_bajo: thresholds.LOW,
+          riesgo_medio: thresholds.MEDIUM,
+          riesgo_alto: thresholds.HIGH,
+          riesgo_critico: thresholds.CRITICAL,
+          tiempos_atencion: tiemposAtencion,
+        });
+        if (notifRules.length) {
+          await mutations.saveNotificationRules(notifRules);
+        }
+      } else if (tab === 'recurrent') {
+        await mutations.saveRepetitiveSettings(repetitiveConfig);
+        if (escalationItems.length) {
+          await mutations.saveEscalationActions(escalationItems);
+        }
       }
       setToast('Configuración guardada correctamente');
     } catch {
@@ -113,10 +206,30 @@ export function SettingsView() {
           />
         )}
 
-        {(tab === 'rag' || tab === 'alerts' || tab === 'recurrent') && (
+        {tab === 'rag' && (
           <div className="rounded-lg border border-border bg-surface-2/40 p-8 text-center text-ink-muted">
             Sección en preparación — disponible próximamente.
           </div>
+        )}
+
+        {tab === 'alerts' && (
+          <AlertsSettingsTab
+            thresholds={thresholds}
+            tiemposAtencion={tiemposAtencion}
+            notificationRules={notifRules}
+            onThresholdsChange={setThresholds}
+            onTiemposAtencionChange={setTiemposAtencion}
+            onNotificationRulesChange={setNotifRules}
+          />
+        )}
+
+        {tab === 'recurrent' && (
+          <RepetitiveFaultsSettingsTab
+            config={repetitiveConfig}
+            escalationActions={escalationItems}
+            onConfigChange={setRepetitiveConfig}
+            onEscalationActionsChange={setEscalationItems}
+          />
         )}
 
         {toast && (
@@ -130,9 +243,15 @@ export function SettingsView() {
           </p>
         )}
 
-        {(tab === 'ml' || tab === 'messages') && (
+        {(tab === 'ml' || tab === 'messages' || tab === 'alerts' || tab === 'recurrent') && (
           <Button fullWidth size="lg" onClick={() => void handleSave()} disabled={saving}>
-            {saving ? 'Guardando configuración…' : 'Guardar configuración'}
+            {saving
+              ? 'Guardando configuración…'
+              : tab === 'alerts'
+                ? 'Guardar configuración de alertas'
+                : tab === 'recurrent'
+                  ? 'Guardar configuración de fallos repetitivos'
+                  : 'Guardar configuración'}
           </Button>
         )}
       </div>
