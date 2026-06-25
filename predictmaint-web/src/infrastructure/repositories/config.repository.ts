@@ -54,6 +54,10 @@ export class ConfigRepository {
     return apiClient.post<{ ok: boolean }>(`/repetitive-faults/${id}/resolve`, { nota });
   }
 
+  patchRagSource(id: number, activa: boolean): Promise<RagSource> {
+    return apiClient.patch<RagSource>(`/catalog/rag-sources/${id}`, { activa });
+  }
+
   getDispatchSchedule(): Promise<DispatchScheduleItem[]> {
     return apiClient.get<DispatchScheduleItem[]>('/catalog/dispatch-schedule');
   }

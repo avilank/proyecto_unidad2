@@ -26,9 +26,12 @@ import {
   useDispatchSchedule,
   useEscalationActions,
   useNotificationRules,
+  useRagSources,
   useSettingsMutations,
   useSystemConfig,
 } from '@/presentation/hooks/useSettings';
+import { RagSettingsTab } from '@/components/dashboard/settings/rag-settings-tab';
+import type { RagSource } from '@/core/entities';
 import { cn } from '@/lib/utils/cn';
 
 const DEFAULT_THRESHOLDS: ThresholdMap = {
@@ -50,7 +53,7 @@ type SettingsTab = 'ml' | 'messages' | 'rag' | 'alerts' | 'recurrent';
 const TABS: { id: SettingsTab; label: string; ready: boolean }[] = [
   { id: 'ml', label: 'Modelos ML', ready: true },
   { id: 'messages', label: 'Envío de Mensajes', ready: true },
-  { id: 'rag', label: 'RAG', ready: false },
+  { id: 'rag', label: 'RAG', ready: true },
   { id: 'alerts', label: 'Alertas', ready: true },
   { id: 'recurrent', label: 'Fallos Repetitivos', ready: true },
 ];
@@ -64,6 +67,7 @@ export function SettingsView() {
   const schedule = useDispatchSchedule();
   const notificationRules = useNotificationRules();
   const escalationActions = useEscalationActions();
+  const ragSources = useRagSources();
   const mutations = useSettingsMutations();
 
   const [umbral, setUmbral] = useState(0.5);
@@ -76,6 +80,7 @@ export function SettingsView() {
     DEFAULT_REPETITIVE_CONFIG,
   );
   const [escalationItems, setEscalationItems] = useState<EscalationAction[]>([]);
+  const [ragItems, setRagItems] = useState<RagSource[]>([]);
 
   useEffect(() => {
     if (config.data) {
@@ -122,6 +127,10 @@ export function SettingsView() {
     }
   }, [notificationRules.data]);
 
+  useEffect(() => {
+    if (ragSources.data?.length) setRagItems(ragSources.data);
+  }, [ragSources.data]);
+
   const handleSave = async () => {
     setSaving(true);
     setToast(null);
@@ -153,6 +162,14 @@ export function SettingsView() {
         if (escalationItems.length) {
           await mutations.saveEscalationActions(escalationItems);
         }
+      } else if (tab === 'rag' && ragItems.length) {
+        const changed = ragItems.filter(
+          (source) =>
+            ragSources.data?.find((it) => it.id === source.id)?.activa !== source.activa,
+        );
+        for (const source of changed) {
+          await mutations.patchRagSource(source.id, source.activa);
+        }
       }
       setToast('Configuración guardada correctamente');
     } catch {
@@ -179,6 +196,8 @@ export function SettingsView() {
                 tab === t.id
                   ? t.id === 'messages'
                     ? 'border-success/50 bg-success text-white'
+                    : t.id === 'rag'
+                      ? 'border-violet-400/60 bg-violet-500 text-white'
                     : 'border-accent/50 bg-accent text-white'
                   : t.ready
                     ? 'border-border-soft bg-surface-2/50 text-ink-muted hover:text-ink'
@@ -207,9 +226,16 @@ export function SettingsView() {
         )}
 
         {tab === 'rag' && (
-          <div className="rounded-lg border border-border bg-surface-2/40 p-8 text-center text-ink-muted">
-            Sección en preparación — disponible próximamente.
-          </div>
+          <RagSettingsTab
+            sources={ragItems}
+            loading={Boolean(ragSources.isLoading)}
+            error={ragSources.error ? 'No se pudo cargar fuentes RAG desde el backend.' : null}
+            onToggle={(id, activa) => {
+              setRagItems((prev) =>
+                prev.map((source) => (source.id === id ? { ...source, activa } : source)),
+              );
+            }}
+          />
         )}
 
         {tab === 'alerts' && (
@@ -243,7 +269,7 @@ export function SettingsView() {
           </p>
         )}
 
-        {(tab === 'ml' || tab === 'messages' || tab === 'alerts' || tab === 'recurrent') && (
+        {(tab === 'ml' || tab === 'messages' || tab === 'alerts' || tab === 'recurrent' || tab === 'rag') && (
           <Button fullWidth size="lg" onClick={() => void handleSave()} disabled={saving}>
             {saving
               ? 'Guardando configuración…'
@@ -251,6 +277,8 @@ export function SettingsView() {
                 ? 'Guardar configuración de alertas'
                 : tab === 'recurrent'
                   ? 'Guardar configuración de fallos repetitivos'
+                  : tab === 'rag'
+                  ? 'Guardar configuración RAG'
                   : 'Guardar configuración'}
           </Button>
         )}

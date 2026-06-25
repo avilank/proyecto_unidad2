@@ -10,6 +10,7 @@ import { LecturaSensor } from '../database/models/lectura-sensor.model';
 import { Maquina } from '../database/models/maquina.model';
 import { Orden } from '../database/models/orden.model';
 import { PrediccionFallo } from '../database/models/prediccion-fallo.model';
+import { RecomendacionRagFuente } from '../database/models/recomendacion-rag-fuente.model';
 import { RecomendacionRag } from '../database/models/recomendacion-rag.model';
 import { TipoFallo } from '../database/models/tipo-fallo.model';
 import { MlGatewayModule } from '../ml-gateway/ml-gateway.module';
@@ -33,6 +34,7 @@ import { SensorReadingsService } from './sensor-readings.service';
       PrediccionFallo,
       ClasificacionFallo,
       RecomendacionRag,
+      RecomendacionRagFuente,
       FuenteRag,
       TipoFallo,
       ConfiguracionAlertas,

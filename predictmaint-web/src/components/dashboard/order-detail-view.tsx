@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Topbar } from '@/components/common/topbar';
 import { RagDetailText } from '@/components/common/rag-detail-text';
+import { RagRegenerateButton, RagSourcesFooter } from '@/components/dashboard/rag-plan-footer';
 import { RagTechnicianResponsePanel } from '@/components/dashboard/rag-technician-response-panel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -261,6 +262,10 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                       <p className="text-sm text-ink-muted">Sin recomendaciones (S-1 sin falla o sin S-3)</p>
                     )}
                   </div>
+                  <RagSourcesFooter fuentes={rag.data?.fuentes} />
+                  {!isTechnician && hasRagPlan && !isFinalized && (
+                    <RagRegenerateButton orderId={orderId} onRegenerated={refresh} />
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -485,14 +490,14 @@ function formatSolucionTipo(tipo?: SolucionTipo | string | null) {
 function formatRagPriority(prioridad: string): string {
   switch (prioridad?.toUpperCase()) {
     case 'CRITICO':
-      return 'critico';
+      return 'Crítica';
     case 'MEDIO':
-      return 'medio';
+      return 'Moderada';
     case 'BAJO':
     case 'ALTO':
-      return 'bajo';
+      return 'Baja';
     default:
-      return prioridad?.toLowerCase() ?? '—';
+      return prioridad ?? '—';
   }
 }
 

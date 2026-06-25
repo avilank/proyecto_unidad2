@@ -11,6 +11,7 @@ import { TipoFallo } from './tipo-fallo.model';
 import { ClasificacionFallo } from './clasificacion-fallo.model';
 import { FuenteRag } from './fuente-rag.model';
 import { RecomendacionRag } from './recomendacion-rag.model';
+import { RecomendacionRagFuente } from './recomendacion-rag-fuente.model';
 import { Orden } from './orden.model';
 import { Alerta } from './alerta.model';
 import { EventoOrden } from './evento-orden.model';
@@ -40,6 +41,7 @@ export const models = [
   ClasificacionFallo,
   FuenteRag,
   RecomendacionRag,
+  RecomendacionRagFuente,
   Orden,
   Alerta,
   EventoOrden,
@@ -70,6 +72,7 @@ export {
   ClasificacionFallo,
   FuenteRag,
   RecomendacionRag,
+  RecomendacionRagFuente,
   Orden,
   Alerta,
   EventoOrden,

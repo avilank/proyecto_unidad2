@@ -128,6 +128,15 @@ const RAG_SOURCE_DESCRIPTIONS: Record<string, string> = {
   'Jakobs et al. (2026)': 'Gestión de fallas aleatorias, inspección manual y escalamiento técnico seguro.',
 };
 
+const DEFAULT_RAG_SOURCES = [
+  { titulo: 'Theissler et al. (2021)', autor: 'Theissler et al.', activo: true },
+  { titulo: 'Pashmforoush et al. (2025)', autor: 'Pashmforoush et al.', activo: true },
+  { titulo: 'Cai et al. (2023)', autor: 'Cai et al.', activo: true },
+  { titulo: 'Araujo et al. (2025)', autor: 'Araujo et al.', activo: true },
+  { titulo: 'Hesser & Markert (2019)', autor: 'Hesser & Markert', activo: true },
+  { titulo: 'Jakobs et al. (2026)', autor: 'Jakobs et al.', activo: true },
+] as const;
+
 @Injectable()
 export class ConfigCatalogService {
   constructor(
@@ -293,6 +302,7 @@ export class ConfigCatalogService {
   }
 
   async getRagSources() {
+    await this.ensureRagSourcesSeeded();
     const rows = await this.fuenteRagModel.findAll({ order: [['idFuente', 'ASC']] });
     return rows.map((f) => ({
       id: f.idFuente,
@@ -348,6 +358,13 @@ export class ConfigCatalogService {
     await regla.update(patch);
 
     return this.getNotificationRules();
+  }
+    private async ensureRagSourcesSeeded(): Promise<void> {
+    const count = await this.fuenteRagModel.count();
+    if (count > 0) return;
+    await this.fuenteRagModel.bulkCreate(
+      DEFAULT_RAG_SOURCES.map((item) => ({ ...item })),
+    );
   }
 
   async getDispatchSchedule(): Promise<DispatchScheduleItem[]> {

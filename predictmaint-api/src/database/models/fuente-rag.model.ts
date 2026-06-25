@@ -1,5 +1,6 @@
 import { Table, Column, Model, DataType, PrimaryKey, AutoIncrement, HasMany } from 'sequelize-typescript';
 import { RecomendacionRag } from './recomendacion-rag.model';
+import { RecomendacionRagFuente } from './recomendacion-rag-fuente.model';
 
 @Table({ tableName: 'fuentes_rag', underscored: true, timestamps: false })
 export class FuenteRag extends Model {
@@ -22,4 +23,10 @@ export class FuenteRag extends Model {
 
   @HasMany(() => RecomendacionRag)
   declare recomendaciones?: RecomendacionRag[];
+
+  @HasMany(() => RecomendacionRagFuente, {
+    foreignKey: 'idFuente',
+    sourceKey: 'idFuente',
+  })
+  declare recomendacionesLink?: RecomendacionRagFuente[];
 }
