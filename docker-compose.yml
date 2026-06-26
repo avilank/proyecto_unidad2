@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: predictmaint
       POSTGRES_PASSWORD: predictmaint
@@ -43,11 +43,11 @@ services:
       DATABASE_USER: predictmaint
       DATABASE_PASSWORD: predictmaint
       DATABASE_NAME: predictmaint
-      DATABASE_SYNC: 'true'
+      DATABASE_SYNC: 'false'
       DATABASE_ALTER: 'true'
       DATABASE_FORCE: 'false'
       DATABASE_LOGGING: 'false'
-      DATABASE_SEED: 'true'
+      DATABASE_SEED: 'false'
       JWT_SECRET: change-me-in-production
       JWT_EXPIRES_IN: 8h
       ML_SERVICE_URL: http://ml:8000
