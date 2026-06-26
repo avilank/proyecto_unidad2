@@ -1,67 +1,166 @@
-# Manual — Rutas del sistema PredictMaint
+# Manual — Rutas del sistema PredictMaint (por módulo)
 
-Listado **completo** de rutas del sistema: páginas del frontend (Next.js) y endpoints del
-backend (API REST), más el servicio ML interno.
+Listado completo de rutas agrupadas por **módulo funcional**: frontend (Next.js), backend
+(NestJS) y servicio ML (FastAPI).
 
 ## Direcciones base
-| Servicio | URL base | Notas |
-|---|---|---|
-| **Web** (Next.js) | `http://localhost:3000` | Interfaz de usuario |
-| **API** (NestJS) | `http://localhost:3001` | Sin prefijo global |
-| **ML** (FastAPI) | `http://localhost:8000` | Interno; solo lo llama el API |
-| **Swagger (API)** | `http://localhost:3001/api/docs` | Documentación interactiva de endpoints |
+
+| Servicio | URL base (Docker) | URL base (local dev) | Notas |
+|---|---|---|---|
+| **Web** (Next.js) | `http://localhost:3000` | `http://localhost:3000` | Interfaz de usuario |
+| **API** (NestJS) | `http://localhost:3001` | `http://localhost:3004` | Sin prefijo global |
+| **ML** (FastAPI) | `http://localhost:8000` | `http://localhost:8001` | Interno; solo lo llama el API |
+| **Swagger** | `http://localhost:3001/api/docs` | `http://localhost:3004/api/docs` | Documentación interactiva |
 
 **Autenticación:** todos los endpoints requieren `Authorization: Bearer <JWT>` **excepto** los
 marcados como *Público*. El SSE de monitoreo recibe el token por query (`?token=`).
 
+**Generación de fallas (demo):** el cron interno `AutoFaultService` (`DEMO_AUTOFAULT_ENABLED=true`)
+inyecta lecturas vía `POST /sensor-readings`. El script `scripts/simulate-sensor-stream.py` es
+opcional y no es necesario si el cron está activo.
+
 ---
 
-# 1. Rutas del Frontend (páginas)
+# Parte 1 — Frontend (`predictmaint-web`)
+
+## Módulo: Auth & navegación
 
 | Ruta | Archivo | Descripción | Rol |
 |---|---|---|---|
-| `/` | `app/page.tsx` | Redirección inicial (a login o dashboard) | Todos |
+| `/` | `app/page.tsx` | Redirección inicial (login o dashboard) | Todos |
 | `/login` | `app/(auth)/login/page.tsx` | Inicio de sesión | Público |
-| `/dashboard` | `app/dashboard/page.tsx` | Panel principal: KPIs, estado de máquinas, alertas recientes | Supervisor / Jefe |
-| `/dashboard/monitoring` | `app/dashboard/monitoring/page.tsx` | Monitoreo en tiempo real (SSE), tarjetas de máquinas, flujo de asignación | Supervisor / Jefe |
-| `/dashboard/analysis/[machineId]` | `app/dashboard/analysis/[machineId]/page.tsx` | Análisis ML de una máquina: S-1 predicción, S-2 clasificación, S-3 RAG | Supervisor / Jefe |
-| `/dashboard/orders` | `app/dashboard/orders/page.tsx` | Historial de mantenimiento (lista/filtros/CSV, reasignación) | Supervisor / Jefe |
-| `/dashboard/orders/[id]` | `app/dashboard/orders/[id]/page.tsx` | Detalle completo de una orden + timeline | Supervisor / Jefe / Técnico (su orden) |
-| `/dashboard/technicians` | `app/dashboard/technicians/page.tsx` | Gestión de técnicos (CRUD) | Supervisor / Jefe |
-| `/dashboard/analytics` | `app/dashboard/analytics/page.tsx` | Analítica y reportes (efectividad, recurrencia, MTTR/MTBF, validación) | Supervisor / Jefe |
-| `/dashboard/analytics/repetitive` | `app/dashboard/analytics/repetitive/page.tsx` | Detalle de máquinas con fallos recurrentes | Supervisor / Jefe |
-| `/dashboard/settings` | `app/dashboard/settings/page.tsx` | Configuración (Modelos ML, Envíos, RAG, Alertas, Fallos Repetitivos) | Supervisor / Jefe |
-| `/dashboard/profile` | `app/dashboard/profile/page.tsx` | Mi perfil (editar nombre y teléfono) | Todos |
-| `/dashboard/my-work` | `app/dashboard/my-work/page.tsx` | Tablero del técnico (pendientes / completadas) | Técnico / Técnico senior |
 
-**Layouts:** `app/layout.tsx` (raíz, tema claro/oscuro) · `app/dashboard/layout.tsx` (sidebar + protección).
+**Layouts compartidos:** `app/layout.tsx` (tema) · `app/dashboard/layout.tsx` (sidebar + guard de rol).
 
 ---
 
-# 2. Endpoints del Backend (API REST)
+## Módulo: Dashboard principal
 
-> Base: `http://localhost:3001`. Método · Ruta · Descripción · Acceso.
+| Ruta | Archivo | Descripción | Rol |
+|---|---|---|---|
+| `/dashboard` | `app/dashboard/page.tsx` | KPIs, estado de máquinas, alertas recientes | Supervisor / Jefe |
 
-## 2.1 Autenticación — `/auth`
+---
+
+## Módulo: Monitoreo en tiempo real
+
+| Ruta | Archivo | Descripción | Rol |
+|---|---|---|---|
+| `/dashboard/monitoring` | `app/dashboard/monitoring/page.tsx` | Tarjetas de máquinas, alertas, flujo de asignación (SSE) | Supervisor / Jefe |
+
+**API relacionada:** `GET /monitoring/stream` · `GET /alerts/active`
+
+---
+
+## Módulo: Análisis ML (S-1 / S-2 / S-3)
+
+| Ruta | Archivo | Descripción | Rol |
+|---|---|---|---|
+| `/dashboard/analysis/[machineId]` | `app/dashboard/analysis/[machineId]/page.tsx` | Predicción, clasificación y plan RAG por máquina | Supervisor / Jefe |
+
+**API relacionada:** `/predictions/*` · `/rag/plan/:orderId`
+
+---
+
+## Módulo: Órdenes de mantenimiento
+
+| Ruta | Archivo | Descripción | Rol |
+|---|---|---|---|
+| `/dashboard/orders` | `app/dashboard/orders/page.tsx` | Historial, filtros, CSV, reasignación supervisor | Supervisor / Jefe |
+| `/dashboard/orders/[id]` | `app/dashboard/orders/[id]/page.tsx` | Detalle, timeline, respuesta RAG, solución | Supervisor / Jefe / Técnico (su orden) |
+
+**API relacionada:** `/orders/*` · `/rag/plan/:orderId/*`
+
+---
+
+## Módulo: Gestión de técnicos
+
+| Ruta | Archivo | Descripción | Rol |
+|---|---|---|---|
+| `/dashboard/technicians` | `app/dashboard/technicians/page.tsx` | CRUD de técnicos, disponibilidad, turnos | Supervisor / Jefe |
+
+**API relacionada:** `/technicians/*`
+
+---
+
+## Módulo: Analítica y reportes
+
+| Ruta | Archivo | Descripción | Rol |
+|---|---|---|---|
+| `/dashboard/analytics` | `app/dashboard/analytics/page.tsx` | Efectividad, MTTR/MTBF, validación ML, log mensajes | Supervisor / Jefe |
+| `/dashboard/analytics/repetitive` | `app/dashboard/analytics/repetitive/page.tsx` | Detalle de máquinas con fallos recurrentes | Supervisor / Jefe |
+
+**API relacionada:** `/analytics/*` · `/notifications/log` · `/repetitive-faults/*`
+
+---
+
+## Módulo: Configuración del sistema
+
+| Ruta | Archivo | Descripción | Rol |
+|---|---|---|---|
+| `/dashboard/settings` | `app/dashboard/settings/page.tsx` | Modelos ML, envíos, RAG, alertas, fallos repetitivos | Supervisor / Jefe |
+
+**API relacionada:** `/config` · `/catalog/*` · `/ml-models/*`
+
+---
+
+## Módulo: Perfil de usuario
+
+| Ruta | Archivo | Descripción | Rol |
+|---|---|---|---|
+| `/dashboard/profile` | `app/dashboard/profile/page.tsx` | Editar nombre y teléfono | Todos |
+
+**API relacionada:** `GET/PATCH /users/me`
+
+---
+
+## Módulo: Mi trabajo (técnico)
+
+| Ruta | Archivo | Descripción | Rol |
+|---|---|---|---|
+| `/dashboard/my-work` | `app/dashboard/my-work/page.tsx` | Tablero pendientes / completadas | Técnico / Técnico senior |
+
+**API relacionada:** `GET /orders/my-board` · acciones sobre `/orders/:id/*`
+
+---
+
+# Parte 2 — Backend (`predictmaint-api`) por módulo NestJS
+
+> Base: `http://localhost:3001` (Docker) o `http://localhost:3004` (local). Formato: Método · Ruta · Descripción · Acceso.
+
+---
+
+## Módulo: `AuthModule` — Autenticación
+
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
-| POST | `/auth/login` | Iniciar sesión (devuelve JWT + usuario) | **Público** |
+| POST | `/auth/login` | Iniciar sesión (JWT + usuario) | **Público** |
 | GET | `/auth/me` | Usuario autenticado + permisos | JWT |
 | POST | `/auth/logout` | Cerrar sesión | JWT |
 
-## 2.2 Raíz — `/`
+---
+
+## Módulo: `AppModule` — Raíz
+
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
-| GET | `/` | Estado/raíz del API | JWT |
+| GET | `/` | Estado / health del API | JWT |
+| GET | `/api/docs` | Swagger UI | JWT |
 
-## 2.3 Usuarios y perfil — `/users`
+---
+
+## Módulo: `UsersModule` — Usuarios y perfil
+
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
 | GET | `/users` | Listar usuarios | JWT |
 | GET | `/users/me` | Perfil del usuario autenticado | JWT |
-| PATCH | `/users/me` | Actualizar perfil (nombre y teléfono) | JWT |
+| PATCH | `/users/me` | Actualizar perfil (nombre, teléfono) | JWT |
 
-## 2.4 Máquinas — `/machines`
+---
+
+## Módulo: `MachinesModule` — Máquinas
+
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
 | GET | `/machines` | Listar máquinas | JWT |
@@ -70,102 +169,142 @@ marcados como *Público*. El SSE de monitoreo recibe el token por query (`?token
 | POST | `/machines` | Crear máquina | JWT |
 | PATCH | `/machines/:id` | Actualizar máquina | JWT |
 
-## 2.5 Lecturas de sensor — `/sensor-readings`
+---
+
+## Módulo: `SensorReadingsModule` — Lecturas y pipeline
+
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
-| POST | `/sensor-readings` | Registrar lectura y ejecutar pipeline (simulador/sensores) | **Público** |
+| POST | `/sensor-readings` | Registrar lectura y ejecutar pipeline S-1→S-2→S-3 | **Público** |
 | GET | `/sensor-readings` | Listar lecturas | JWT |
 | GET | `/sensor-readings/:id` | Obtener una lectura | JWT |
 
-## 2.6 Predicciones (inferencia ML) — `/predictions`
+**Origen demo:** cron `AutoFaultService` (`DEMO_AUTOFAULT_*` en `.env`).
+
+---
+
+## Módulo: `PredictionsModule` — Inferencia ML (consulta)
+
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
 | GET | `/predictions/binary/:orderId` | Predicciones binarias S-1 de la orden | JWT |
 | GET | `/predictions/multiclass/:orderId` | Clasificación multiclase S-2 de la orden | JWT |
-| POST | `/predictions/run/:orderId` | Re-ejecutar inferencia (body `{ etapa: S1\|S2 }`) | JWT |
+| POST | `/predictions/run/:orderId` | Re-ejecutar inferencia (`{ etapa: S1\|S2 }`) | JWT |
 
-## 2.7 Órdenes — `/orders`
+---
+
+## Módulo: `OrdersModule` — Órdenes de mantenimiento
+
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
-| GET | `/orders` | Listar órdenes (filtros/paginación) | JWT |
-| GET | `/orders/my-board` | Tablero del técnico (sus órdenes) | Técnico |
+| GET | `/orders` | Listar órdenes (filtros / paginación) | JWT |
+| GET | `/orders/my-board` | Tablero del técnico | Técnico |
 | GET | `/orders/:id` | Obtener una orden | JWT |
-| GET | `/orders/:id/timeline` | Timeline de eventos de la orden | JWT |
+| GET | `/orders/:id/timeline` | Timeline de eventos | JWT |
 | POST | `/orders` | Crear orden | JWT |
-| POST | `/orders/:id/start` | Iniciar orden | Técnico |
+| POST | `/orders/:id/start` | Iniciar orden (`en_progreso`) | Técnico |
 | PATCH | `/orders/:id/status` | Actualizar estado | JWT |
-| POST | `/orders/:id/solution` | Registrar solución (finaliza la orden) | Técnico |
-| POST | `/orders/:id/reject-prediction` | Rechazar predicción (con justificación) | Técnico |
-| POST | `/orders/:id/reassign` | Reasignar a otro técnico (con motivo) | Supervisor / Jefe |
-| POST | `/orders/:id/escalate` | Escalar orden (con motivo) | JWT |
+| POST | `/orders/:id/solution` | Registrar solución (finaliza) | Técnico |
+| POST | `/orders/:id/reject-prediction` | Rechazar predicción / falsa alarma | Técnico |
+| POST | `/orders/:id/reassign` | Reasignar técnico (motivo) | Supervisor / Jefe |
+| POST | `/orders/:id/escalate` | Escalar orden (motivo) | JWT |
 
-## 2.8 Alertas — `/alerts`
+---
+
+## Módulo: `AlertsModule` — Alertas
+
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
 | GET | `/alerts/active` | Alertas activas | JWT |
-| GET | `/alerts` | Listar alertas (filtros/paginación) | JWT |
+| GET | `/alerts` | Listar alertas | JWT |
 | GET | `/alerts/:id` | Obtener una alerta | JWT |
-| PATCH | `/alerts/:id/status` | Actualizar estado de alerta | JWT |
+| PATCH | `/alerts/:id/status` | Actualizar estado | JWT |
 
-## 2.9 RAG (recomendaciones) — `/rag`
+---
+
+## Módulo: `RagModule` — Plan de acción RAG
+
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
-| GET | `/rag/plan/:orderId` | Obtener plan RAG de la orden | JWT |
+| GET | `/rag/plan/:orderId` | Obtener plan RAG | JWT |
 | POST | `/rag/plan/:orderId/accept` | Aceptar plan RAG | JWT |
-| POST | `/rag/plan/:orderId/reject` | Rechazar plan RAG (con motivo) | JWT |
+| POST | `/rag/plan/:orderId/reject` | Rechazar plan RAG (motivo) | JWT |
 | POST | `/rag/plan/:orderId/regenerate` | Regenerar plan RAG | JWT |
 
-## 2.10 Técnicos — `/technicians`
+---
+
+## Módulo: `TechniciansModule` — Técnicos
+
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
 | GET | `/technicians` | Listar técnicos | JWT |
-| GET | `/technicians/available` | Técnicos disponibles según estrategia | JWT |
+| GET | `/technicians/available` | Técnicos disponibles (estrategia asignación) | JWT |
 | GET | `/technicians/:id` | Obtener un técnico | JWT |
 | POST | `/technicians` | Crear técnico | JWT |
 | PATCH | `/technicians/:id` | Actualizar técnico | JWT |
-| DELETE | `/technicians/:id` | Eliminar (inactivar) técnico | JWT |
+| DELETE | `/technicians/:id` | Inactivar técnico | JWT |
 
-## 2.11 Notificaciones — `/notifications`
+---
+
+## Módulo: `NotificationsModule` — Notificaciones
+
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
 | GET | `/notifications/log` | Log de mensajes enviados | JWT |
 | POST | `/notifications/send` | Enviar notificación al técnico asignado | JWT |
 | GET | `/notifications/next-dispatch` | Próximo envío programado | JWT |
 
-## 2.12 Fallos repetitivos — `/repetitive-faults`
+**Integraciones:** SMTP directo (nodemailer) · webhook n8n (`SEND_EMAIL_WEBHOOK`).
+
+---
+
+## Módulo: `RepetitiveFaultsModule` — Fallos repetitivos
+
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
 | GET | `/repetitive-faults` | Listar fallos repetitivos | JWT |
-| GET | `/repetitive-faults/:maquinaId/history` | Historial de intervenciones de una máquina | JWT |
-| POST | `/repetitive-faults/:id/resolve` | Resolver un fallo repetitivo (con nota) | JWT |
+| GET | `/repetitive-faults/:maquinaId/history` | Historial por máquina | JWT |
+| POST | `/repetitive-faults/:id/resolve` | Resolver fallo repetitivo (nota) | JWT |
 
-## 2.13 Modelos ML (catálogo) — `/ml-models`
+---
+
+## Módulo: `MlModelsModule` — Catálogo de modelos ML
+
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
-| GET | `/ml-models` | Listar modelos ML (`?etapa=S1\|S2`) | JWT |
-| PATCH | `/ml-models/:id/activate` | Activar un modelo de su etapa | JWT |
+| GET | `/ml-models` | Listar modelos (`?etapa=S1\|S2`) | JWT |
+| PATCH | `/ml-models/:id/activate` | Activar modelo de su etapa | JWT |
 
-## 2.14 Configuración — `/config`
+---
+
+## Módulo: `ConfigCatalogModule` — Configuración y catálogos
+
+### Rutas `/config`
+
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
 | GET | `/config` | Obtener configuración del sistema | JWT |
-| PATCH | `/config` | Actualizar configuración (umbrales, SLA, fallos repetitivos, etc.) | JWT |
+| PATCH | `/config` | Actualizar umbrales, SLA, repetitivos, etc. | JWT |
 
-## 2.15 Catálogos — `/catalog`
+### Rutas `/catalog`
+
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
-| GET | `/catalog/fault-types` | Catálogo de tipos de fallo | JWT |
-| GET | `/catalog/risk-levels` | Catálogo de niveles de riesgo (con SLA) | JWT |
-| GET | `/catalog/rag-sources` | Catálogo de fuentes RAG | JWT |
-| PATCH | `/catalog/rag-sources/:id` | Activar/desactivar una fuente RAG | JWT |
+| GET | `/catalog/fault-types` | Tipos de fallo | JWT |
+| GET | `/catalog/risk-levels` | Niveles de riesgo (SLA) | JWT |
+| GET | `/catalog/rag-sources` | Fuentes RAG | JWT |
+| PATCH | `/catalog/rag-sources/:id` | Activar/desactivar fuente RAG | JWT |
 | GET | `/catalog/notification-rules` | Reglas de notificación por nivel | JWT |
 | PATCH | `/catalog/notification-rules/:nivel` | Actualizar regla (canal / destinatario) | JWT |
-| GET | `/catalog/escalation-actions` | Acciones escaladas por tipo de fallo | JWT |
-| PATCH | `/catalog/escalation-actions/:tipoFallo` | Actualizar acción escalada de un tipo | JWT |
+| GET | `/catalog/escalation-actions` | Acciones escaladas por tipo | JWT |
+| PATCH | `/catalog/escalation-actions/:tipoFallo` | Actualizar acción escalada | JWT |
 | GET | `/catalog/dispatch-schedule` | Horarios de envío | JWT |
 | PATCH | `/catalog/dispatch-schedule` | Actualizar horarios de envío | JWT |
 
-## 2.16 Analítica — `/analytics`
+---
+
+## Módulo: `AnalyticsModule` — Analítica y reportes
+
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
 | GET | `/analytics/dashboard` | KPIs del dashboard | JWT |
@@ -173,41 +312,95 @@ marcados como *Público*. El SSE de monitoreo recibe el token por query (`?token
 | GET | `/analytics/faults-by-type` | Fallos por tipo | JWT |
 | GET | `/analytics/unattended` | Órdenes sin atender | JWT |
 | GET | `/analytics/recurrent-machines` | Máquinas con fallos recurrentes | JWT |
-| GET | `/analytics/machine-recurrence` | Ranking de máquinas por fallos en ventana | JWT |
+| GET | `/analytics/machine-recurrence` | Ranking por fallos en ventana | JWT |
 | GET | `/analytics/availability` | Disponibilidad de máquinas | JWT |
-| GET | `/analytics/prediction-validation` | Historial: predicción vs. decisión del técnico | JWT |
-| GET | `/analytics/reliability` | **MTTR y MTBF** por máquina y global | JWT |
+| GET | `/analytics/prediction-validation` | Predicción vs. decisión del técnico | JWT |
+| GET | `/analytics/reliability` | MTTR y MTBF | JWT |
 | GET | `/analytics/sensor-trend` | Serie temporal de sensores | JWT |
 | GET | `/analytics/export` | Exportar CSV (stub) | JWT |
 
-## 2.17 Monitoreo (tiempo real) — `/monitoring`
+---
+
+## Módulo: `MonitoringModule` — Tiempo real (SSE)
+
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
-| GET (SSE) | `/monitoring/stream` | Stream de eventos en vivo (Server-Sent Events) | Token por query `?token=` |
-
-## 2.18 Documentación
-| Método | Ruta | Descripción |
-|---|---|---|
-| GET | `/api/docs` | Swagger UI (todos los endpoints) |
+| GET (SSE) | `/monitoring/stream` | Stream de eventos en vivo | Token query `?token=` |
 
 ---
 
-# 3. Servicio ML (FastAPI) — interno
+## Módulo: `JobsModule` — Tareas programadas (sin rutas HTTP)
 
-> Base `http://localhost:8000`. **No** lo llama el navegador; solo el API (cabecera `X-API-Key`).
-
-| Método | Ruta | Descripción |
+| Servicio | Frecuencia | Función |
 |---|---|---|
-| GET | `/health` | Estado + nº de modelos cargados |
-| POST | `/predict` | S-1: predicción binaria (FALLA / SIN_FALLA) |
-| POST | `/classify` | S-2: clasificación de tipo de fallo |
-| POST | `/rag` | S-3: generación del plan de acción |
+| `AutoFaultService` | cada min (respeta `DEMO_AUTOFAULT_MIN`) | Inyecta fallas demo → `POST /sensor-readings` |
+| `AssignmentRetryService` | cada min | Reintenta asignación de técnico |
+| `EscalationService` | cada 30 s | Escalamiento por SLA vencido |
+| `JobsService` | horario / diario | Limpieza y mantenimiento |
 
 ---
 
-# 4. Resumen por números
-- **Frontend:** 13 páginas (12 bajo `/dashboard` + login) + 2 layouts.
-- **Backend:** 17 controllers · ~62 endpoints REST + 1 SSE.
-- **ML:** 4 endpoints internos.
-- **Públicos (sin JWT):** `POST /auth/login`, `POST /sensor-readings`. SSE con token en query.
-</content>
+## Módulo: `MlGatewayModule` — Puente al servicio ML (interno)
+
+No expone rutas propias. Llama a FastAPI desde `SensorReadingsModule`, `RagModule` y `PredictionsModule`.
+
+| Destino FastAPI | Uso |
+|---|---|
+| `POST /predict` | Pipeline S-1 |
+| `POST /classify` | Pipeline S-2 |
+| `POST /rag` | Pipeline S-3 |
+
+---
+
+# Parte 3 — Servicio ML (`predictmaint-ml`)
+
+## Módulo: Inferencia FastAPI
+
+> Base `http://localhost:8000` (Docker) o `http://localhost:8001` (local). Cabecera `X-API-Key`.
+> **No** lo llama el navegador; solo `MlGatewayModule`.
+
+| Método | Ruta | Etapa | Descripción |
+|---|---|---|---|
+| GET | `/health` | — | Estado + modelos cargados |
+| POST | `/predict` | **S-1** | Predicción binaria (FALLA / SIN_FALLA) |
+| POST | `/classify` | **S-2** | Clasificación de tipo de fallo |
+| POST | `/rag` | **S-3** | Generación del plan de acción |
+
+## Módulo: Entrenamiento offline (sin HTTP)
+
+| Componente | Descripción |
+|---|---|
+| `train.py` | Entrena 6 modelos y genera `artifacts/*.joblib` |
+| `ai4i2020.csv` | Dataset AI4I 2020 |
+| `features.py` · `models.py` · `rag.py` | Preproceso, carga de modelos y RAG |
+
+---
+
+# Resumen por módulo
+
+| Capa | Módulos | Rutas |
+|---|---|---|
+| **Frontend** | 10 módulos funcionales | 13 páginas + 2 layouts |
+| **Backend** | 17 módulos NestJS (+ Jobs sin HTTP) | ~62 REST + 1 SSE |
+| **ML** | Inferencia + entrenamiento | 4 endpoints HTTP + scripts offline |
+
+**Públicos (sin JWT):** `POST /auth/login` · `POST /sensor-readings`
+
+**SSE:** `GET /monitoring/stream?token=`
+
+---
+
+# Mapa rápido Frontend ↔ Backend
+
+| Módulo frontend | Módulos API principales |
+|---|---|
+| Dashboard | `AnalyticsModule`, `AlertsModule` |
+| Monitoreo | `MonitoringModule`, `AlertsModule`, `MachinesModule` |
+| Análisis ML | `PredictionsModule`, `RagModule`, `OrdersModule` |
+| Órdenes | `OrdersModule`, `RagModule` |
+| Técnicos | `TechniciansModule` |
+| Analítica | `AnalyticsModule`, `NotificationsModule`, `RepetitiveFaultsModule` |
+| Configuración | `ConfigCatalogModule`, `MlModelsModule` |
+| Perfil | `UsersModule` |
+| Mi trabajo | `OrdersModule`, `RagModule` |
+| Auth | `AuthModule` |

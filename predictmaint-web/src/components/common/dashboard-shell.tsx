@@ -14,6 +14,7 @@ function isTechnicianRole(rol?: RolUsuario) {
 function isTechnicianAllowedPath(pathname: string) {
   return (
     pathname === '/dashboard/my-work' ||
+    pathname === '/dashboard/profile' ||
     pathname.startsWith('/dashboard/orders/')
   );
 }
