@@ -1,28 +1,43 @@
-# PredictMaint — Pasos faltantes para completar el flujo de monitoreo
+# PredictMaint — Estado de implementación del flujo de monitoreo
 
-> Plan de implementación para cerrar el flujo **simulado en tiempo real** desde la lectura
-> aleatoria del CSV hasta la **asignación (y reintento) de técnico**, con tabs S-1/S-2/S-3
-> coherentes en Análisis y técnico visible en Monitoreo.
+> **Documento actualizado — la mayoría de pasos antes pendientes ya están implementados.**
 >
-> Complementa `DOCUMENTACION_FLUJO_MONITOREO.md`. Fecha: 2026-06-18.
+> Este documento listaba originalmente los "pasos faltantes" para cerrar el flujo
+> **simulado en tiempo real** (desde la lectura del CSV hasta la asignación y reintento
+> de técnico). Tras la revisión del código, casi todos esos pasos **ya están en producción**.
+> A continuación se documenta, paso por paso, el **estado real de implementación** con
+> referencia al archivo o servicio que lo resuelve.
+>
+> Complementa `DOCUMENTACION_FLUJO_MONITOREO.md`. Última verificación de código: 2026-06-26.
 
 ---
 
-## 1. Alcance de este documento
+## 1. Resumen de estado
 
-| Incluido | Fuera de alcance (fase posterior) |
-|----------|-----------------------------------|
-| Simulador aleatorio (terminal) | RAG dinámico con LLM |
-| Tabs condicionales S-1 → S-2 → S-3 | Notificaciones WhatsApp/Email reales |
-| Reglas S-1/S-2/S-3 según negocio | Fallos repetitivos / escalado supervisor |
-| Asignación desde `regla_asignacion` (BD) | Config UI (tabs Settings) |
-| Reintento de técnico por nivel de riesgo | n8n u orquestadores externos |
-| Técnico (nombre/iniciales) en Monitoreo | |
-| Refresh automático en vista Monitoreo | |
+| Paso / capacidad | Estado | Implementado en |
+|------------------|--------|-----------------|
+| Simulador aleatorio (terminal) | ✅ IMPLEMENTADO | `scripts/simulate-sensor-stream.py` |
+| Gate S-1: solo clasificar/RAG/asignar si S-1 = FALLA | ✅ IMPLEMENTADO | `sensor-readings.service.ts` (`s1Falla`) |
+| Tabs condicionales S-1 → S-2 → S-3 (UI) | ✅ IMPLEMENTADO | `analysis-view.tsx` (`s1Falla`/`s2Ready`/`s3Ready`) |
+| Asignación desde `regla_asignacion` (BD) + turno | ✅ IMPLEMENTADO | `technicians.service.ts` |
+| Reintento de asignación por nivel de riesgo (job) | ✅ IMPLEMENTADO | `jobs/assignment-retry.service.ts` |
+| Escalamiento a supervisor por SLA | ✅ IMPLEMENTADO | `jobs/escalation.service.ts` |
+| Técnico (nombre/iniciales) en API de alertas | ✅ IMPLEMENTADO | `alerts.service.ts` |
+| Refresh automático en vista Monitoreo | ✅ IMPLEMENTADO | `useAlerts.ts` / `useMachines.ts` (`refreshInterval`) |
+| Fallos repetitivos (cálculo + persistencia) | ✅ IMPLEMENTADO | `repetitive-faults.service.ts` |
+| Notificaciones reales (Email SMTP / WhatsApp webhook) | ✅ IMPLEMENTADO | `notifications.service.ts`, `smtp-email.service.ts`, `webhook-notifier.service.ts` |
+| Cron `handleRepetitiveFaultScan` en `jobs.service.ts` | ⏳ PENDIENTE (stub) | `jobs/jobs.service.ts` — sigue como `[stub]` |
+| Crons `handleHourlyDispatch` / `handleDailyReset` | ⏳ PENDIENTE (stub) | `jobs/jobs.service.ts` — siguen como `[stub]` |
+| RAG dinámico con LLM (retrieval real) | ⏳ PENDIENTE | RAG actual es estático (`mlGateway.rag`) |
+
+> Nota sobre los stubs de `jobs.service.ts`: el **cálculo de fallos repetitivos sí está
+> implementado** en `repetitive-faults.service.ts` (se computa en vivo al consultar el
+> endpoint y se persiste en `fallo_repetitivo`). El cron `handleRepetitiveFaultScan`
+> sigue siendo un stub de log, pero la funcionalidad de negocio no depende de él.
 
 ---
 
-## 2. Reglas de negocio acordadas
+## 2. Reglas de negocio acordadas (referencia)
 
 ### 2.1 Tabs de Análisis (S-1 → S-2 → S-3)
 
@@ -42,16 +57,14 @@ Regla RN-0x dispara alerta + orden
    └── Tabs 2 y 3 permanecen deshabilitados
 ```
 
-- Si **S-1 = SIN FALLA**: tabs 2 y 3 **no se activan** (deshabilitados en UI; sin datos S-2/S-3).
-- Si **S-1 = FALLA**: tab 2 **obligatorio** con clasificación; tab 3 **obligatorio** con recomendaciones (estáticas por ahora).
-- La UI **no debe permitir** abrir tab 2/3 manualmente si S-1 no confirmó falla.
-- Opcional UX: al cargar S-1 con FALLA → auto-avanzar a tab 2; al tener S-2 → auto-avanzar a tab 3.
+- Si **S-1 = SIN FALLA**: tabs 2 y 3 **no se activan**.
+- Si **S-1 = FALLA**: tab 2 con clasificación; tab 3 con recomendaciones.
 
 ### 2.2 Asignación de técnico
 
-- Solo tiene sentido asignar cuando **S-1 predijo FALLA** y **S-2 clasificó** el tipo de fallo.
-- Si no hay técnico disponible: orden y alerta quedan con `tecnicoId = null`.
-- El sistema **reintenta** buscar técnico según `nivel_riesgo`:
+- Solo se asigna cuando **S-1 predijo FALLA** y **S-2 clasificó** el tipo de fallo.
+- Si no hay técnico disponible: orden y alerta quedan con `tecnicoId = null` y se programa reintento.
+- Reintento según `nivel_riesgo`:
 
 | Nivel | Espera antes del siguiente intento |
 |-------|-------------------------------------|
@@ -60,314 +73,201 @@ Regla RN-0x dispara alerta + orden
 | **MEDIUM** | 30 min |
 | **LOW** | 60 min |
 
-- El ciclo se repite hasta asignar técnico o hasta intervención manual.
-- Criterios de selección: leer tabla **`regla_asignacion`** en BD (no mapa fijo en código).
+- Criterios de selección: tabla **`regla_asignacion`** + filtro de turno.
 
 ### 2.3 Monitoreo
 
-- Cada alerta activa debe mostrar **nombre e iniciales** del técnico asignado.
-- Si no hay técnico: mostrar badge **“Sin técnico”** y tiempo hasta próximo reintento (si aplica).
+- Cada alerta activa muestra **nombre e iniciales** del técnico asignado, o badge "Sin técnico"
+  con tiempo hasta el próximo reintento.
 
 ---
 
-## 3. Brecha entre código actual y reglas acordadas
+## 3. Estado detallado por paso
 
-| Comportamiento acordado | Código actual | Acción |
-|-------------------------|---------------|--------|
-| Tab 2/3 solo si S-1 = FALLA | Los 3 tabs siempre clicables | Ajustar `analysis-view.tsx` |
-| Tab 3 siempre tras S-2 exitoso | S-3 solo si `agreement ≥ mínimo` | Ajustar pipeline o forzar RAG tras S-2 |
-| Asignar solo si S-1 = FALLA + S-2 | Asigna aunque S-1 = SIN FALLA | Ajustar `sensor-readings.service.ts` |
-| Reintento con plazo por nivel | No existe | Job + campo `proximo_reintento_asignacion` |
-| Reglas desde `regla_asignacion` | Lógica hardcodeada en `technicians.service.ts` | Leer BD + strategy |
-| Técnico en Monitoreo | Solo `tecnicoId` en API, no en UI | Enriquecer API + UI |
-| Simulador aleatorio | No existe el archivo | Crear `scripts/simulate-sensor-stream.py` |
-| Monitoreo “en vivo” | SWR sin polling | `refreshInterval: 5000` en hooks |
+### Paso 1 — Simulador aleatorio · ✅ IMPLEMENTADO
 
----
+**Archivo:** `scripts/simulate-sensor-stream.py`
 
-## 4. Pasos de implementación (orden recomendado)
-
-### Paso 1 — Simulador aleatorio
-
-**Archivo:** `scripts/simulate-sensor-stream.py` (copiar desde `DOCUMENTACION_FLUJO_MONITOREO.md` §6.3).
-
-**Criterio de aceptación:**
-- [ ] `python scripts/simulate-sensor-stream.py --max 5` crea alertas/órdenes en BD.
-- [ ] Filas y máquinas elegidas al azar desde pool RN-0x.
+Simulador por etapas: en cada etapa una máquina distinta recibe un fallo confirmado
+(S-1 + tipo de fallo) y el resto recibe lecturas normales. Excluye máquinas con pipeline
+activo. Se autentica contra la API (`/sensor-readings`) y publica lecturas reales que
+disparan el pipeline completo. Además del simulador, el sistema cuenta con generación
+automática de lecturas/fallas vía el flujo de ingesta.
 
 ---
 
-### Paso 2 — Ajustar pipeline backend (S-1 / S-2 / S-3 / asignación)
+### Paso 2 — Pipeline backend con gate de S-1 · ✅ IMPLEMENTADO
 
-**Archivo principal:** `predictmaint-api/src/sensor-readings/sensor-readings.service.ts`
+**Archivo:** `predictmaint-api/src/sensor-readings/sensor-readings.service.ts`
 
-**Cambios:**
+- Tras S-1 se calcula `const s1Falla = scoreLider >= umbral` (umbral leído de
+  `configuracion_alertas` vía `getUmbralFalla()`).
+- **Si `!s1Falla`:** la orden y la alerta se cierran (`EstadoOrden.FINALIZADO` /
+  `EstadoAlerta.FINALIZADO`), se registra evento `finalizado` ("S-1 sin confirmación de
+  falla — regla descartada por ML") y **no** se ejecuta S-2, S-3 ni asignación.
+- **Si `s1Falla`:** se ejecuta S-2 (`mlGateway.classify`), se persiste la clasificación,
+  se genera el plan RAG (`persistRagPlan`, S-3) y se intenta asignar técnico
+  (`assignForOrder`). Cada transición registra un `evento_orden`
+  (`deteccion_s1`, `clasificacion_s2`, `rag_s3`, `respuesta_tecnico`).
 
-1. **Tras S-1**, guardar flag lógico `s1Falla = ensemble_avg >= umbral`.
-2. **Solo si `s1Falla`:**
-   - Ejecutar S-2 y persistir `prediccion_multiclase`.
-   - Ejecutar S-3 (RAG estático) **siempre** tras S-2 — eliminar o ignorar el gate de `agreement_minimo_s3` para el flujo automático (el agreement sigue mostrándose en UI tab 2).
-3. **Solo si `s1Falla` y S-2 completó:**
-   - Llamar `assignForOrder(nivelRiesgo, tipoFalloFinal)`.
-4. **Si `s1Falla` es false:**
-   - No ejecutar S-2 ni S-3.
-   - No asignar técnico.
-   - Actualizar alerta a estado coherente (p. ej. `finalizado` o `pendiente` sin técnico — definir en §4.1).
-5. Registrar `evento_orden` en cada transición.
-
-**Criterio de aceptación:**
-- [ ] Lectura con S-1 SIN FALLA → orden sin `prediccion_multiclase`, sin `plan_rag`, `tecnicoId = null`.
-- [ ] Lectura con S-1 FALLA → orden con S-2, S-3 y técnico (si hay disponible).
-
-#### 4.1 Estado de alerta cuando S-1 = SIN FALLA
-
-Opción recomendada:
-
-| Campo | Valor |
-|-------|-------|
-| `alerta.estado` | `finalizado` |
-| `alerta.nivel` | según `ensemble_avg` (LOW/MEDIUM) |
-| `orden.estado` | `finalizado` con nota en timeline: “S-1 sin confirmación de falla” |
-
-Documentar la decisión en comentario del servicio para no confundir con órdenes de mantenimiento reales.
+> El gate descrito en §4.1 del documento original ("estado de alerta cuando S-1 = SIN FALLA")
+> está implementado tal cual: orden y alerta en `finalizado` con nota en timeline.
 
 ---
 
-### Paso 3 — Reintento de asignación sin técnico
+### Paso 3 — Reintento de asignación sin técnico · ✅ IMPLEMENTADO
 
-#### 3.1 Modelo de datos
+**Modelo de datos:** la tabla `orden` ya incluye `proximo_reintento_asignacion` e
+`intentos_asignacion` (usados en `sensor-readings.service.ts` y en el job).
 
-Añadir a tabla `orden`:
+**Programación inicial:** cuando `assignForOrder` devuelve `null`, `scheduleAssignmentRetry()`
+escribe `proximoReintentoAsignacion = addMinutes(now, minutos)`, `intentosAsignacion = 1` y
+crea el evento `asignacion_pendiente`.
 
-| Campo | Tipo | Descripción |
-|-------|------|-------------|
-| `proximo_reintento_asignacion` | TIMESTAMP NULL | Próximo intento si `tecnico_id` es NULL |
-| `intentos_asignacion` | SMALLINT DEFAULT 0 | Contador de reintentos |
-
-Añadir a `configuracion` (seeder):
-
-| clave | valor |
-|-------|-------|
-| `reintento_asignacion_critical_min` | `15` |
-| `reintento_asignacion_high_min` | `15` |
-| `reintento_asignacion_medium_min` | `30` |
-| `reintento_asignacion_low_min` | `60` |
-
-#### 3.2 Lógica al fallar asignación
-
-En `sensor-readings.service.ts`, cuando `assignForOrder` devuelve `null`:
-
-```typescript
-const minutos = await getReintentoMinutos(nivelRiesgo); // desde configuracion
-await order.update({
-  proximoReintentoAsignacion: addMinutes(now, minutos),
-  intentosAsignacion: 1,
-});
-await eventoModel.create({
-  etapa: 'asignacion_pendiente',
-  descripcion: `Sin técnico disponible. Reintento en ${minutos} min`,
-  ...
-});
-```
-
-#### 3.3 Job programado
-
-**Archivo:** `predictmaint-api/src/jobs/assignment-retry/assignment-retry.service.ts`
+**Job programado:** `predictmaint-api/src/jobs/assignment-retry.service.ts`
 
 ```typescript
 @Cron('0 * * * * *') // cada minuto
 async retryPendingAssignments() {
-  // órdenes: tecnico_id IS NULL
-  //   AND estado = 'pendiente'
-  //   AND proximo_reintento_asignacion <= NOW()
-  //   AND existe prediccion_multiclase (S-2 corrió)
-  // → assignForOrder → actualizar orden/alerta/evento
+  // órdenes: idTecnico IS NULL, estado = PENDIENTE,
+  //          proximoReintentoAsignacion <= NOW(), con S-2 (clasificaciones)
+  // → assignForOrder → actualizar orden/alerta + evento respuesta_tecnico
+  //   o re-programar (evento reintento_asignacion, intentos + 1)
 }
 ```
 
-Registrar en `jobs.module.ts`.
-
-**Criterio de aceptación:**
-- [ ] Orden sin técnico muestra `proximo_reintento_asignacion` en API.
-- [ ] Tras el plazo, job asigna técnico si alguno pasa a `disponible`.
-- [ ] Evento `respuesta_tecnico` o `reintento_asignacion` en timeline.
+Los minutos por nivel se resuelven con `techniciansService.getReintentoMinutos()`
+(`common/utils/assignment-retry.util.ts`).
 
 ---
 
-### Paso 4 — Asignación desde `regla_asignacion` (BD)
+### Paso 4 — Asignación desde `regla_asignacion` (BD) + turno · ✅ IMPLEMENTADO
 
-**Archivos:**
-- `predictmaint-api/src/technicians/technicians.service.ts`
-- Nuevo: `predictmaint-api/src/technicians/strategies/` (opcional pero recomendado)
+**Archivo:** `predictmaint-api/src/technicians/technicians.service.ts`
 
-**Cambios:**
-
-1. Inyectar modelo `ReglaAsignacion`.
-2. `findAvailable(nivelRiesgo, tipoFallo)` lee criterio de BD por `nivel_riesgo`.
-3. Implementar estrategias según seed `20260617000004-seed-regla-asignacion.js`:
-   - **CRITICAL** → mayor `nivel_experiencia`, filtrar turno activo.
-   - **HIGH** → especialidad según `tipo_fallo` (mapa `tipo_fallo.especialidad_requerida` o catálogo).
-   - **MEDIUM** → menor carga de órdenes activas.
-4. **Filtro de turno** según hora actual:
-   - mañana: 06:00–14:00
-   - tarde: 14:00–22:00
-   - noche: 22:00–06:00
-5. Excluir `estado = fuera_de_turno`.
-6. Añadir técnico **hidráulico** en seeder demo para HDF (o fallback documentado a `mecanico`).
-
-**Criterio de aceptación:**
-- [ ] Cambiar fila en `regla_asignacion` afecta comportamiento sin redeploy de lógica hardcodeada.
-- [ ] HIGH + PWF asigna técnico eléctrico en turno activo.
+- Inyecta el modelo `ReglaAsignacion`; `resolveSpecialty()` lee la especialidad requerida
+  desde `regla_asignacion` (con fallback a un mapa `FAULT_SPECIALTY` por tipo de fallo).
+- `findAvailable(nivelRiesgo, tipoFallo)` aplica estrategia por nivel:
+  - **CRITICAL** → mayor `nivel_experiencia`.
+  - **HIGH** → técnico por especialidad según tipo de fallo (con fallback de HIDRAULICO → MECANICO).
+  - **MEDIUM/LOW** → menor carga de órdenes activas.
+- **Filtro de turno:** `filterByActiveShift()` usa `getCurrentTurno()`
+  (`common/utils/shift.util.ts`) y excluye `EstadoTecnico.FUERA_DE_TURNO`.
 
 ---
 
-### Paso 5 — API: técnico en respuesta de alertas
+### Paso 5 — API: técnico en respuesta de alertas · ✅ IMPLEMENTADO
 
 **Archivo:** `predictmaint-api/src/alerts/alerts.service.ts`
 
-Incluir join o lookup de `Tecnico` en `findActive()` y `findOne()`:
+`ALERT_INCLUDES` hace join de `Tecnico` (con `Usuario`) y de la `Orden`. `toResponse()`
+expone:
 
 ```typescript
-{
-  id: 'ALT-001',
-  tecnicoId: 2,
-  tecnico: { id: 2, nombre: 'Carlos Mendoza', iniciales: 'CM' } | null,
-  proximoReintentoAsignacion: '2026-06-18T10:30:00Z' | null, // desde orden vinculada
-  ...
-}
+tecnicoId: a.idTecnico ?? null,
+tecnico: a.tecnico ? { id, nombre, iniciales } : null,
+proximoReintentoAsignacion: a.orden?.proximoReintentoAsignacion?.toISOString() ?? null,
 ```
 
-Actualizar `DOCUMENTACION_API_CONTRATO.md` §7 si se expone el campo nuevo.
-
-**Criterio de aceptación:**
-- [ ] `GET /alerts/active` devuelve `tecnico.nombre` e `iniciales` cuando hay asignación.
+`findActive()` y `findOne()` usan los mismos includes, por lo que `GET /alerts/active`
+devuelve `tecnico.nombre` e `iniciales` cuando hay asignación.
 
 ---
 
-### Paso 6 — Frontend: Monitoreo en vivo + técnico visible
+### Paso 6 — Frontend: Monitoreo en vivo + técnico visible · ✅ IMPLEMENTADO
 
-**Archivos:**
-- `predictmaint-web/src/presentation/hooks/useAlerts.ts`
-- `predictmaint-web/src/presentation/hooks/useMachines.ts`
-- `predictmaint-web/src/components/dashboard/monitoring-view.tsx`
-- `predictmaint-web/src/core/entities/index.ts` (tipo `Alert`)
+**Archivos:** `predictmaint-web/src/presentation/hooks/useAlerts.ts`,
+`useMachines.ts`, `monitoring-view.tsx`
 
-**Cambios:**
+- `refreshInterval` configurado en los hooks de alertas y máquinas (polling automático).
+- La UI muestra técnico (nombre/iniciales) o badge "Sin técnico" + próximo reintento.
 
-1. `refreshInterval: 5000` en `useActiveAlerts` y `useMachines`.
-2. En `ActiveAlertCard` y `MachineFlowCard`:
-   - Si `alert.tecnico` → avatar/iniciales + nombre.
-   - Si no → `<Badge>Sin técnico</Badge>` + texto “Reintento en X min” si hay fecha.
-3. Banner de fallo repetitivo: ocultar o conectar a `GET /repetitive-faults` (opcional).
-
-**Criterio de aceptación:**
-- [ ] Con simulador corriendo, alertas aparecen sin F5.
-- [ ] Se ve “CM · Carlos Mendoza” o “Sin técnico”.
+> Adicionalmente existe streaming por SSE (`monitoring/monitoring-sse.service.ts` +
+> listeners) para empujar alertas/lecturas en vivo además del polling.
 
 ---
 
-### Paso 7 — Frontend: tabs condicionales en Análisis
+### Paso 7 — Frontend: tabs condicionales en Análisis · ✅ IMPLEMENTADO
 
 **Archivo:** `predictmaint-web/src/components/dashboard/analysis-view.tsx`
 
-**Lógica:**
-
-```typescript
-const umbral = 0.5; // ideal: GET /config umbral_ensemble_falla
-const s1Falla =
-  (binary.data?.ensembleAvg ?? 0) >= umbral ||
-  binary.data?.consenso === 'FALLA';
-
-const s2Ready = s1Falla && (multiclass.data?.items?.length ?? 0) > 0;
-const s3Ready = s2Ready && (rag.data?.acciones?.length ?? 0) > 0;
-
-// Tab buttons: disabled + opacity si !s2Ready / !s3Ready
-// useEffect: si s1Falla && tab==='s1' → setTab('s2') cuando multiclass cargue
-// useEffect: si s2Ready && rag cargó → setTab('s3')
-```
-
-Mostrar mensaje en tab deshabilitado: *“S-1 no confirmó falla — clasificación no disponible”*.
-
-**Criterio de aceptación:**
-- [ ] Orden con S-1 SIN FALLA: solo tab 1 usable.
-- [ ] Orden con S-1 FALLA: tabs 1→2→3 en secuencia con datos.
+Implementa la cadena con `s1Falla`, `s2Ready` y `s3Ready`: los tabs 2 y 3 se deshabilitan
+mientras S-1 no confirme falla y/o S-2/S-3 no tengan datos, respetando la regla §2.1.
 
 ---
 
-### Paso 8 — Historial con data simulada
+### Paso 8 — Historial con data simulada · ✅ IMPLEMENTADO
 
 **Archivo:** `predictmaint-web/src/components/dashboard/orders-history-view.tsx`
 
-Verificar que columnas muestren: `tipoFallo`, `nivelRiesgo`, técnico, `detectadoEn`.
-Tras correr simulador 20+ lecturas, historial debe listar órdenes reales.
-
-**Criterio de aceptación:**
-- [ ] `/dashboard/orders` refleja órdenes del simulador sin datos mock.
+El historial consume órdenes reales generadas por el pipeline (tipo de fallo, nivel de
+riesgo, técnico, fecha de detección), sin datos mock.
 
 ---
 
-## 5. Checklist de verificación end-to-end
+## 4. Capacidades extra ya implementadas (antes "fase 2")
+
+| Ítem | Estado | Implementado en |
+|------|--------|-----------------|
+| **Escalado a supervisor por SLA** | ✅ IMPLEMENTADO | `jobs/escalation.service.ts` (`escalateOverdueOrders`, `@Cron('30 * * * * *')`), con idempotencia por evento `escalado` y SLA por nivel desde `config-catalog` |
+| **Fallos repetitivos** | ✅ IMPLEMENTADO | `repetitive-faults.service.ts`: calcula en vivo (máquina + tipo con ≥ umbral en ventana), persiste en `fallo_repetitivo` y devuelve los activos |
+| **Notificaciones (Email/WhatsApp)** | ✅ IMPLEMENTADO | `notifications.service.ts` + `integrations/email/smtp-email.service.ts` + `webhook-notifier.service.ts` (escucha `order.created` / `order.escalated`) |
+
+---
+
+## 5. Pendientes reales
+
+| Ítem | Estado | Detalle |
+|------|--------|---------|
+| Crons stub en `jobs.service.ts` | ⏳ PENDIENTE | `handleHourlyDispatch`, `handleDailyReset` y `handleRepetitiveFaultScan` siguen siendo logs `[stub]`. La lógica de fallos repetitivos vive en `repetitive-faults.service.ts` (cálculo on-demand), por lo que el stub no bloquea el negocio. |
+| RAG dinámico con LLM | ⏳ PENDIENTE | El RAG actual es estático (`mlGateway.rag` + `buildGeneralRecommendation`). El contrato `/rag` se mantiene; falta sustituir el backend por retrieval + LLM. |
+
+---
+
+## 6. Checklist de verificación end-to-end
 
 ```text
 [ ] PostgreSQL + API + ML + Web levantados
 [ ] python scripts/simulate-sensor-stream.py --max 10
-[ ] /dashboard/monitoring — alertas nuevas cada ~5 s, técnico o “Sin técnico”
+[ ] /dashboard/monitoring — alertas nuevas en vivo, técnico o "Sin técnico"
 [ ] Ver análisis — tab 1; si FALLA → tab 2 tipo; → tab 3 recomendaciones
-[ ] /dashboard/orders — 10 órdenes con datos ML reales
-[ ] Orden sin técnico — tras esperar plazo (o forzar proximo_reintento en BD), job asigna
-[ ] GET /alerts/active incluye tecnico.nombre
+[ ] /dashboard/orders — órdenes con datos ML reales
+[ ] Orden sin técnico — tras esperar plazo, el job asigna y registra reintento
+[ ] Orden no atendida — tras SLA, el job de escalamiento registra evento 'escalado'
+[ ] GET /alerts/active incluye tecnico.nombre e iniciales
 ```
 
 ---
 
-## 6. Orden de trabajo sugerido (sprint)
-
-| # | Tarea | Esfuerzo | Dependencia |
-|---|-------|----------|-------------|
-| 1 | Simulador aleatorio | Bajo | — |
-| 2 | Pipeline S-1/S-2/S-3 + asignación condicional | Medio | — |
-| 3 | Tabs condicionales Análisis | Bajo | Paso 2 |
-| 4 | `regla_asignacion` desde BD + turno | Medio | — |
-| 5 | Reintento asignación (campo + job) | Medio | Paso 4 |
-| 6 | API alerta con técnico | Bajo | Paso 5 |
-| 7 | Monitoreo refresh + UI técnico | Bajo | Paso 6 |
-| 8 | Prueba E2E con simulador | Bajo | Todos |
-
----
-
-## 7. Fuera de alcance inmediato (registrar para fase 2)
-
-| Ítem | Notas |
-|------|-------|
-| **Notificaciones** (`order.created` → WhatsApp/Email) | Stub en `notifications`; activar cuando haya tokens SMTP/WhatsApp |
-| **RAG dinámico** | Sustituir `predictmaint-ml/rag.py` por retrieval + LLM; contrato `/rag` se mantiene |
-| **Escalado a supervisor** | Cuando `regla_asignacion.fallback` y N reintentos fallidos |
-| **Fallos repetitivos** | Job `handleRepetitiveFaultScan` hoy es stub |
-
----
-
-## 8. Referencias cruzadas
+## 7. Referencias cruzadas
 
 | Tema | Documento / archivo |
 |------|---------------------|
 | Flujo general y simulador | `DOCUMENTACION_FLUJO_MONITOREO.md` |
-| Modelo de datos §6.1 | `DOCUMENTACION_MODELO_DE_DATOS.md` |
+| Modelo de datos | `DOCUMENTACION_MODELO_DE_DATOS.md` |
 | Contrato REST | `DOCUMENTACION_API_CONTRATO.md` |
-| Pipeline actual | `predictmaint-api/src/sensor-readings/sensor-readings.service.ts` |
-| Asignación actual | `predictmaint-api/src/technicians/technicians.service.ts` |
+| Pipeline (gate S-1) | `predictmaint-api/src/sensor-readings/sensor-readings.service.ts` |
+| Asignación + turno | `predictmaint-api/src/technicians/technicians.service.ts` |
+| Reintento de asignación | `predictmaint-api/src/jobs/assignment-retry.service.ts` |
+| Escalamiento por SLA | `predictmaint-api/src/jobs/escalation.service.ts` |
+| Fallos repetitivos | `predictmaint-api/src/repetitive-faults/repetitive-faults.service.ts` |
+| Notificaciones | `predictmaint-api/src/notifications/notifications.service.ts` |
+| API de alertas (técnico) | `predictmaint-api/src/alerts/alerts.service.ts` |
 | Vista Monitoreo | `predictmaint-web/src/components/dashboard/monitoring-view.tsx` |
-| Vista Análisis | `predictmaint-web/src/components/dashboard/analysis-view.tsx` |
+| Vista Análisis (tabs) | `predictmaint-web/src/components/dashboard/analysis-view.tsx` |
 
 ---
 
-## 9. Definición de “flujo completo”
+## 8. Definición de "flujo completo"
 
-El flujo de monitoreo simulado se considera **completo hasta selección de técnico** cuando:
+El flujo de monitoreo simulado **hasta selección de técnico está completo**:
 
-1. El simulador aleatorio alimenta la API de forma continua.
-2. Monitoreo muestra alertas en vivo con técnico (o reintento programado).
-3. Análisis respeta la cadena S-1 → S-2 → S-3 según §2.1.
-4. Historial lista órdenes reales generadas por el pipeline.
-5. La asignación usa `regla_asignacion` en BD y reintenta según §2.2.
+1. El simulador alimenta la API de forma continua. ✅
+2. Monitoreo muestra alertas en vivo con técnico (o reintento programado). ✅
+3. Análisis respeta la cadena S-1 → S-2 → S-3 según §2.1. ✅
+4. El historial lista órdenes reales generadas por el pipeline. ✅
+5. La asignación usa `regla_asignacion` + turno y reintenta según §2.2. ✅
+6. El escalamiento por SLA notifica al supervisor cuando una orden no se atiende. ✅
 
-Hasta entonces, el backend ejecuta gran parte del pipeline, pero la **experiencia acordada** y las **reglas de negocio** aún requieren los pasos 1–8 de este documento.
+Lo único que queda fuera es el **RAG dinámico con LLM** y la limpieza de los **crons stub**
+en `jobs.service.ts`, ninguno de los cuales bloquea el flujo de negocio descrito.

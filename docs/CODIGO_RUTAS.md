@@ -1,6 +1,6 @@
 # Código de rutas — copiar y pegar con descripción
 
-Bloques anotados por ruta: comentario general del flujo + código real del proyecto (frontend y backend).
+Bloques anotados por ruta: comentario general del flujo + código real del proyecto (frontend y backend). **Automatización y notificaciones:** sección [18](#18-automatización-y-envío-de-notificaciones).
 
 ---
 
@@ -211,8 +211,6 @@ async create(dto: CreateSensorReadingDto) {
 
   // Crea análisis → orden pendiente → alerta → llama ML S-1, S-2, S-3
   const order = await this.ordenModel.create({ estado: EstadoOrden.PENDIENTE, ... });
-  // ... mlGateway.predict(), mlGateway.classify(), mlGateway.rag()
-  // ... asignación técnico, notificaciones, eventos SSE
 }
 
 // ── BACKEND: jobs/auto-fault.service.ts (demo) ──
@@ -581,7 +579,144 @@ async rag(payload) { return this.client.post('/rag', payload); }
 
 ---
 
-## 18. Cliente HTTP compartido (todas las rutas frontend)
+## 18. Automatización y envío de notificaciones
+
+```typescript
+// DESCRIPCIÓN: Al asignar un técnico (pipeline o reintento), el API emite ORDER_CREATED_EVENT.
+// OrderNotificationListener reacciona y envía email/WhatsApp según reglas de configuración.
+
+// ── BACKEND: order-notification.listener.ts ──
+@OnEvent(ORDER_CREATED_EVENT, { async: true })
+async handleOrderCreated(payload: OrderCreatedPayload): Promise<void> {
+  if (!payload.tecnicoId) return;
+  await this.notificationsService.notifyTechnicianAssignment(payload);
+}
+
+// ── BACKEND: sensor-readings.service.ts (emisión tras asignar) ──
+this.eventEmitter.emit(ORDER_CREATED_EVENT, {
+  orderId: order.codigo,
+  tecnicoId: tecnico.idTecnico,
+  maquinaId: maquina.codigo,
+  nivelRiesgo,
+});
+
+// ── BACKEND: notifications.service.ts — lectura de reglas y envío ──
+async notifyTechnicianAssignment(payload: OrderCreatedPayload) {
+  const regla = await this.reglaModel.findOne({ where: { nivel } });
+  const recipients = this.recipientsFromRecibe(regla?.recibe); // técnico / supervisor / nadie
+  const allowEmail = regla?.canal?.includes('email');
+  const allowWhatsapp = regla?.canal?.includes('whatsapp');
+
+  if (recipients.tecnico) {
+    await this.dispatchToTechnician(/* SMTP o webhook según config */);
+  }
+  if (recipients.supervisor) {
+    await this.notifySupervisorsForAlert(/* ... */);
+  }
+}
+
+// ── BACKEND: dispatchToTechnician — elección de canal ──
+const smtpReady = this.smtpEmail.isConfigured();
+if (sendEmailSmtp) {
+  await this.smtpEmail.send({ to: email, subject, html: emailBody, text: emailText });
+}
+if (needsPhone || sendEmailWebhook) {
+  await this.webhookNotifier.send({
+    email,
+    subject,
+    phone,
+    whatsappSummary,
+    emailBody: sendEmailWebhook ? emailBody : undefined,
+  });
+}
+await this.mensajeModel.create({ canal, estado: EstadoMensaje.ENTREGADO, ... });
+```
+
+```typescript
+// DESCRIPCIÓN: Webhook n8n — POST multipart a SEND_EMAIL_WEBHOOK (WhatsApp + email si no hay SMTP).
+
+// predictmaint-api/src/notifications/webhook-notifier.service.ts
+async send(payload: WebhookNotificationPayload): Promise<void> {
+  const webhookUrl = this.config.get('notifications.sendEmailWebhook');
+  const form = new FormData();
+  form.append('email', payload.email);
+  form.append('subject', payload.subject);
+  if (payload.phone) form.append('phone', payload.phone);
+  if (payload.whatsappSummary) form.append('whatsappSummary', payload.whatsappSummary);
+  if (payload.emailBody) form.append('emailBody', payload.emailBody);
+  await fetch(webhookUrl, { method: 'POST', body: form });
+}
+```
+
+```typescript
+// DESCRIPCIÓN: Escalamiento automático — cron cada 30 s; si SLA vencido, notifica supervisores.
+
+// predictmaint-api/src/jobs/escalation.service.ts
+@Cron('30 * * * * *')
+async escalateOverdueOrders() {
+  // órdenes pendiente + técnico asignado + minutos > SLA
+  await this.eventoModel.create({ etapa: 'escalado', ... });
+  this.eventEmitter.emit(ORDER_ESCALATED_EVENT, payload);
+}
+
+// predictmaint-api/src/notifications/escalation-notification.listener.ts
+@OnEvent(ORDER_ESCALATED_EVENT, { async: true })
+async handleOrderEscalated(payload: OrderEscalatedPayload) {
+  await this.notificationsService.notifyEscalation(payload);
+}
+```
+
+```typescript
+// DESCRIPCIÓN: Reintento de asignación — si encuentra técnico, vuelve a disparar notificación.
+
+// predictmaint-api/src/jobs/assignment-retry.service.ts
+@Cron('0 * * * * *')
+async retryPendingAssignments() {
+  const tecnico = await this.techniciansService.assignForOrder(nivelRiesgo, tipoFallo);
+  if (tecnico) {
+    await order.update({ idTecnico: tecnico.idTecnico });
+    this.eventEmitter.emit(ORDER_CREATED_EVENT, { orderId, tecnicoId, ... });
+  }
+}
+```
+
+```typescript
+// DESCRIPCIÓN: Frontend — configurar reglas de notificación por nivel de riesgo (Settings → Alertas).
+
+// predictmaint-web/src/infrastructure/repositories/config.repository.ts
+getNotificationRules() {
+  return apiClient.get('/catalog/notification-rules');
+}
+patchNotificationRule(nivel: string, body: { canal?: string; recibe?: string }) {
+  return apiClient.patch(`/catalog/notification-rules/${nivel}`, body);
+}
+
+// predictmaint-web/src/components/dashboard/settings/alerts-settings-tab.tsx
+// Selects: canal (Email / WhatsApp / ambos / ninguno) y destinatario (técnico / supervisor / ...)
+```
+
+```typescript
+// DESCRIPCIÓN: Log de mensajes enviados — panel en /dashboard/analytics.
+
+// predictmaint-web/src/infrastructure/repositories/analytics.repository.ts
+getNotificationLog(page = 1, limit = 20) {
+  return apiClient.get('/notifications/log', { params: { page, limit } });
+}
+
+// predictmaint-api/src/notifications/notifications.controller.ts
+@Get('log')
+getLog(@Query() query) {
+  return this.notificationsService.getLog(query);
+}
+```
+
+**Variables `.env` (API):** `MAIL_HOST`, `MAIL_USER`, `MAIL_PASS` · `SEND_EMAIL_WEBHOOK` · `FRONTEND_URL`
+
+**Endpoints relacionados:** `GET /notifications/log` · `POST /notifications/send` · `GET/PATCH /catalog/notification-rules/:nivel` · `PATCH /config` (SLA)
+
+---
+
+## 19. Cliente HTTP compartido (todas las rutas frontend)
 
 ```typescript
 // DESCRIPCIÓN: Axios inyecta Authorization: Bearer desde sessionStore en cada petición REST.
@@ -611,9 +746,10 @@ apiClient.interceptors.request.use((config) => {
 | `/dashboard/my-work` | `GET /orders/my-board` |
 | `/dashboard/technicians` | `/technicians/*` |
 | `/dashboard/analytics` | `/analytics/*`, `/notifications/log` |
-| `/dashboard/settings` | `/config`, `/catalog/*`, `/ml-models/*` |
+| `/dashboard/settings` | `/config`, `/catalog/*`, `/ml-models/*`, `/catalog/notification-rules` |
 | `/dashboard/profile` | `GET/PATCH /users/me` |
-| Pipeline demo | Cron → `POST /sensor-readings` → ML S-1/S-2/S-3 |
+| Automatización | Eventos + crons → `notifications.service.ts`, SMTP / webhook n8n |
+| Pipeline demo | Cron → `POST /sensor-readings` → ML → `ORDER_CREATED_EVENT` → notificación |
 
 ---
 

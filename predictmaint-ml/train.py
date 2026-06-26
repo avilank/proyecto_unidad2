@@ -88,11 +88,15 @@ def train() -> dict:
     artifacts_path.mkdir(parents=True, exist_ok=True)
 
     print(f"Cargando dataset: {dataset_path}")
+    """Cargamos dataset/."""
     raw = pd.read_csv(dataset_path)
-    df = preprocess_dataframe(raw)
+    """Preprocesamos dataset-columnas/.""" 
+    df = preprocess_dataframe(raw) 
 
     X = df[FEATURE_COLUMNS].values
+    """Etiquetamos objetivo S-1/."""
     y_binary = df["Machine failure"].astype(int).values
+    """Etiquetamos objetivo S-2/."""
     y_fault = extract_fault_labels(df).values
 
     X_train, X_test, y_train, y_test, y_fault_train, y_fault_test = train_test_split(
@@ -133,6 +137,7 @@ def train() -> dict:
         joblib.dump(model, artifacts_path / f"{name}.joblib")
         print(f"  {name}: accuracy={metrics['accuracy']}% rocAuc={metrics['rocAuc']}")
 
+    """Filtramos solo fallas"""
     fault_train_mask = y_fault_train != "NONE"
     fault_test_mask = y_fault_test != "NONE"
     X_fault_train = X_train_scaled[fault_train_mask]

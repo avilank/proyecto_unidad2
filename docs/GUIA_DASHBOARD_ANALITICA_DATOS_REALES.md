@@ -124,7 +124,7 @@ sublabel={`${d?.criticosHoy ?? 0} criticos / ${d?.moderadosHoy ?? 0} moderados`}
 | | Hoy | Captura 07 |
 |---|-----|------------|
 | UI | `RawJsonView` | Layout completo |
-| Componentes | 0 | 6 bloques + tabla |
+| Componentes | 0 | 6 bloques + tabla (ver A.4: +disponibilidad, confiabilidad, validación) |
 
 ### Layout
 
@@ -178,7 +178,102 @@ AnalyticsPage
 
 ---
 
-## A.4 Orden Parte A
+## A.4 Paneles de analítica adicionales (ya implementados)
+
+> Estos paneles **ya existen en el código** (`analytics-view.tsx` + carpeta `analytics/`) y van **más allá** de la captura 07. Documentados aquí para mantener la guía alineada con la implementación real.
+
+### Composición real de la vista (`analytics-view.tsx`)
+
+```
+AnalyticsView
+├── Topbar "Analítica y Reportes"
+├── AnalyticsFiltersBar          ← barra de filtros global (alimenta varios paneles)
+├── AnalyticsKpiRow              (summary)
+├── grid 2col: UnattendedPanel | FaultAnalyticsPanel
+├── grid 2col: RagEffectivenessPanel | RecurrencePanel
+├── AvailabilityPanel           ← NUEVO
+├── ReliabilityPanel            ← NUEVO (MTTR / MTBF)
+├── PredictionValidationPanel   ← NUEVO (predicción vs técnico, filtros propios)
+└── CsvLogTable
+```
+
+Hooks (`presentation/hooks/useAnalytics.ts`): `useAnalyticsSummary`, `useUnattendedOrders`, `useFaultsByType`, `useMachineRecurrence`, `useAvailability`, `useReliability`, `usePredictionValidation`, `useNotificationLog`.
+
+### A.4.1 Barra de filtros — `AnalyticsFiltersBar`
+
+Tarjeta de filtros que produce un objeto `ReportFilters` consumido por la mayoría de paneles.
+
+| Control | Campo | Notas |
+|---------|-------|-------|
+| Desde / Hasta | `desde`, `hasta` (ISO `YYYY-MM-DD`) | Rango de fechas; si vacío, se usa `range` (week=7d, month=30d) |
+| Técnico | `tecnicoId` | Lista desde `useTechnicians()` |
+| Plan RAG | `respuestaRag` | `aceptado` / `rechazado` / `pendiente` |
+| Limpiar | — | Restaura `DEFAULT_REPORT_FILTERS` |
+
+- Backend: `parseAnalyticsFilters()` + `resolveDateRange()` en `analytics/dto/analytics-filters.dto.ts`. Si hay `desde`, manda el rango explícito; si no, deriva días desde `range`.
+- Paneles alimentados: `AnalyticsKpiRow`, `UnattendedPanel`, `FaultAnalyticsPanel`, `RagEffectivenessPanel`, `RecurrencePanel`, `ReliabilityPanel` y (combinado) `PredictionValidationPanel`.
+- `PredictionValidationPanel` y `CsvLogTable` tienen además **filtros locales propios** (tipo de fallo, decisión, máquina; filtros de log) que se mezclan con los globales vía `mergePredictionFilters`.
+
+### A.4.2 Panel de Confiabilidad — `ReliabilityPanel` (MTTR / MTBF)
+
+- **Endpoint:** `GET /analytics/reliability` (acepta filtros: rango, técnico, máquina).
+- **Qué muestra:**
+  - 4 mini-métricas globales: **MTTR global**, **MTBF global**, **Reparaciones**, **Fallas**.
+  - 2 gráficos de barras por máquina: **MTTR por máquina** (color warning, menos = mejor) y **MTBF por máquina** (color accent, más = mejor).
+  - Las unidades se autoescalan: MTTR → min / horas / días; MTBF → horas / días (días si máx ≥ 48 h).
+- **Cómo se calcula** (`getReliability` en `analytics.service.ts`):
+  - Solo órdenes con técnico asignado (`idTecnico != null`) dentro del rango.
+  - **MTTR** = promedio de `fechaFin − fechaInicio` (fallback a `fechaCreacion`) de órdenes **finalizadas**; conserva precisión en minutos cuando < 1 h.
+  - **MTBF** = promedio de los intervalos entre detecciones consecutivas (`fechaCreacion`) de la misma máquina.
+  - `global` agrega todas las reparaciones e intervalos; `porMaquina` ordena por número de fallas.
+- **Guía dedicada:** ver [`GUIA_MTTR_MTBF.md`](./GUIA_MTTR_MTBF.md) para la definición de negocio y casos límite.
+
+### A.4.3 Panel de Validación de Predicción — `PredictionValidationPanel`
+
+- **Endpoint:** `GET /analytics/prediction-validation` (filtros globales + locales: `tipoFallo`, `decision`, `maquinaId`).
+- **Qué muestra:** contrasta la **predicción del modelo** contra la **decisión del técnico**.
+  - 4 métricas: **Predicciones validadas**, **Aceptadas**, **Rechazadas**, **% acertadas**.
+  - Tabla: Orden · Máquina · Técnico · Predicción (Falla/Sin falla + tipo) · ¿Aceptó/Rechazó? · Justificación (modal con el comentario del rechazo).
+- **Cómo se calcula** (`getPredictionValidation`):
+  - Solo órdenes con técnico asignado **y** con `ObservacionTecnica` registrada (`required: true`), dentro del rango.
+  - `prediccion` = `analisis.prediccion` (FALLA / SIN_FALLA); `tipoFallo` = clasificación líder.
+  - Se marca **rechazada** si `obs.decision = RECHAZADA`, `estado = RECHAZADA`, o `obs.esPrediccionCorrecta = false`; en caso contrario **aceptada**.
+  - `justificacion` = comentario de la observación (solo en rechazos).
+  - El **% acertadas** se calcula en el front sobre las filas devueltas (aceptadas / total).
+
+### A.4.4 Panel de Disponibilidad — `AvailabilityPanel`
+
+- **Endpoint:** `GET /analytics/availability` (sin filtros; refresco cada 15 s).
+- **Qué muestra:** dona + leyenda con máquinas **Operativas** vs **En mantenimiento**, porcentajes, y detalle textual de las máquinas con orden activa.
+- **Cómo se calcula** (`getAvailability`):
+  - `total` = todas las máquinas registradas.
+  - **En mantenimiento** = máquinas con al menos una orden en estado `PENDIENTE` o `EN_PROGRESO` (conteo de `idMaquina` únicos).
+  - **Operativas** = `total − enMantenimiento`.
+  - `detalleMantenimiento` = códigos únicos de máquinas con orden activa.
+
+### A.4.5 Panel de Recurrencia — `RecurrencePanel` (umbrales configurables)
+
+- **Endpoint (vista de analítica):** `GET /analytics/machine-recurrence?days=&minFallos=` (`getMachineRecurrence`). Hoy `analytics-view.tsx` lo invoca con `useMachineRecurrence(7, 2, reportFilters)`; respeta `desde/hasta` si vienen en los filtros y, si no, usa la ventana `days`.
+- **Endpoint relacionado (motor de fallos repetitivos):** `GET /analytics/recurrent-machines` (`getRecurrentMachines`) ahora usa **umbrales configurables** leídos de `configuracion_alertas` vía `configCatalog.getFallosRepetitivosConfig()`:
+  - `umbrales.ventanaDias` → ventana de tiempo (ya **no** un valor fijo de 7/30 días).
+  - `umbrales.notificar.veces` → mínimo de fallos (`minFallos`) para considerar una máquina recurrente.
+  - Estos umbrales se editan en **Configuración → Fallos Repetitivos** (`repetitive-faults-settings-tab`).
+- **Qué muestra:** ranking de máquinas con más fallos confirmados (barra proporcional + conteo, severidad por color). Empty state: "Ninguna máquina alcanzó {minFallos} fallos en los últimos {ventanaDias} días".
+- **Cómo se calcula:** cuenta órdenes con análisis de predicción `FALLA` por máquina en la ventana; filtra por `>= minFallos`; ordena descendente y limita a 10.
+
+> **Nota de alineación:** el panel de la vista de analítica usa `machine-recurrence` (ventana/minFallos por parámetro); los umbrales configurables de `configuracion_alertas` aplican hoy a `recurrent-machines` y al motor de fallos repetitivos. Si se quiere que el panel de analítica respete también la configuración, debe pasar `ventanaDias`/`minFallos` desde la config en lugar de los `7, 2` fijos.
+
+### Checklist — Paneles adicionales
+
+- [ ] `AnalyticsFiltersBar` filtra todos los paneles principales
+- [ ] `ReliabilityPanel` muestra MTTR/MTBF global y por máquina
+- [ ] `PredictionValidationPanel` lista predicción vs decisión + justificación
+- [ ] `AvailabilityPanel` dona operativas/mantenimiento
+- [ ] `RecurrencePanel` usa umbrales (ventanaDias/minFallos)
+
+---
+
+## A.5 Orden Parte A
 
 | Paso | Tarea | Captura |
 |------|-------|---------|
@@ -317,7 +412,11 @@ return rows.map((r) => ({ tipoFallo: r.tipo, count: r.total }));
 | Sin atender | `/analytics/unattended` | Real, pobre | Enriquecer joins |
 | Fallos semana | `/analytics/faults-by-type` | Real, nombres | Mapper |
 | Efectividad | `/analytics/summary` | Real | Calcular % |
-| Recurrencia | `/analytics/recurrent-machines` | 7d, ≥3 | Extender a 30d |
+| Recurrencia (panel) | `/analytics/machine-recurrence` | Real (days/minFallos) | Pasar umbrales de config |
+| Recurrencia (motor) | `/analytics/recurrent-machines` | Real, umbrales config | — |
+| Disponibilidad | `/analytics/availability` | Real | — |
+| Confiabilidad MTTR/MTBF | `/analytics/reliability` | Real | Ver `GUIA_MTTR_MTBF.md` |
+| Validación predicción | `/analytics/prediction-validation` | Real | — |
 | Log mensajes | `/notifications/log` | **Stub** | §B.7.3 |
 
 ### Contrato `summary` — desalineación TS
@@ -353,7 +452,10 @@ Campos tabla captura 07: hora, técnico, máquinas, motivo, canal, estado.
 | `UnattendedPanel` | `useUnattendedOrders()` |
 | `FaultAnalyticsPanel` | `useFaultsByType('week')` |
 | `RagEffectivenessPanel` | `useAnalyticsSummary()` |
-| `RecurrencePanel` | `useRecurrentFaults()` |
+| `RecurrencePanel` | `useMachineRecurrence(days, minFallos)` |
+| `AvailabilityPanel` | `useAvailability()` |
+| `ReliabilityPanel` | `useReliability()` |
+| `PredictionValidationPanel` | `usePredictionValidation()` |
 | `CsvLogTable` | `useNotificationLog()` |
 
 Añadir hooks en `useAnalytics.ts` y métodos en `analytics.repository.ts`.
@@ -376,7 +478,11 @@ Añadir hooks en `useAnalytics.ts` y métodos en `analytics.repository.ts`.
 | `/analytics/summary?range=week` | Efectividad | Sí |
 | `/analytics/faults-by-type` | Fallos por tipo | Sí |
 | `/analytics/unattended` | Pendientes | Sí |
-| `/analytics/recurrent-machines` | Recurrencia | Sí |
+| `/analytics/recurrent-machines` | Recurrencia (umbrales config) | Sí |
+| `/analytics/machine-recurrence?days=&minFallos=` | Ranking recurrencia (panel) | Sí |
+| `/analytics/availability` | Disponibilidad de máquinas | Sí |
+| `/analytics/reliability` | MTTR / MTBF | Sí |
+| `/analytics/prediction-validation` | Predicción vs decisión técnico | Sí |
 | `/analytics/sensor-trend` | Serie sensor | **No** |
 | `/analytics/export` | CSV | **No** |
 | `/notifications/log` | Log envíos | **No** |

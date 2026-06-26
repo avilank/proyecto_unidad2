@@ -8,14 +8,14 @@ export class MonitoringSseService {
   private readonly streams = new Set<Subject<MessageEvent>>();
 
   getStream(): Observable<MessageEvent> {
-    const subject = new Subject<MessageEvent>();
-    this.streams.add(subject);
+    const subject = new Subject<MessageEvent>(); // Suscriptor de eventos
+    this.streams.add(subject); // Añade el suscriptor a la lista de suscriptores
 
     const heartbeat$ = interval(15_000).pipe(
       map(
         () =>
           ({
-            data: JSON.stringify({ type: 'heartbeat', data: {} }),
+            data: JSON.stringify({ type: 'heartbeat', data: {} }), // Evento de heartbeat cada 15 segundos
           }) as MessageEvent,
       ),
     );

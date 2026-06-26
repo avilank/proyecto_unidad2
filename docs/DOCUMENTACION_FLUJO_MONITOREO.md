@@ -1,26 +1,34 @@
 # PredictMaint — Flujo de Monitoreo en Tiempo Real
 
-> Guía para completar y operar el pipeline **S-1 → S-2 → S-3 → asignación de técnico → historial**.
+> Guía para operar el pipeline **S-1 → S-2 → S-3 → asignación de técnico → historial**.
 > Complementa `DOCUMENTACION_ARQUITECTURA.md`, `DOCUMENTACION_API_CONTRATO.md` y
-> `DOCUMENTACION_MODELO_DE_DATOS.md` §6.1. Fecha: 2026-06-18.
+> `DOCUMENTACION_MODELO_DE_DATOS.md` §6.1. Fecha: 2026-06-26 (refleja el flujo **actual** del código).
 
 ---
 
 ## 1. Resumen
 
-> **Importante:** no hay sensores físicos ni IoT en este proyecto. Todo el monitoreo es **100 % simulado**
-> desde la **terminal** con un script Python. No se requiere n8n ni hardware externo.
+> **Importante:** no hay sensores físicos ni IoT en este proyecto. Todo el monitoreo es **100 % simulado**.
+> Se puede alimentar de dos formas: (a) un **script Python** desde la terminal, o (b) el **job interno
+> `auto-fault`** del propio backend (ver §4.7). No se requiere n8n ni hardware externo.
 
-El monitoreo en tiempo real **no es un cron ni un WebSocket**: es un **pipeline por evento**.
-Un **simulador aleatorio** elige filas del CSV y las envía a la API cada pocos segundos.
-Cada lectura simulada que supera una regla (`RN-01..RN-04`) dispara en el backend:
+El monitoreo en tiempo real **es un pipeline por evento** disparado por `POST /sensor-readings`,
+complementado por **tres cron jobs internos** (reintento de asignación, escalamiento por SLA y
+generación automática de fallos). El frontend recibe los cambios en vivo vía **SSE** (Server-Sent
+Events) además de polling.
 
-1. Crea **alerta** + **orden** (sin técnico aún).
-2. Ejecuta **S-1** (3 modelos binarios) vía `predictmaint-ml`.
-3. Si predice falla → **S-2** (3 modelos multiclase).
-4. Si el agreement es suficiente → **S-3** (plan RAG estático por ahora).
-5. Asigna un **técnico disponible** según nivel de riesgo y tipo de fallo.
-6. Persiste todo en PostgreSQL para que el frontend muestre Monitoreo, Análisis (3 tabs) e Historial con **datos persistidos de la simulación** (no datos mock del frontend).
+Cada lectura que supera una regla (`RN-01..RN-04`) dispara en el backend:
+
+1. Verifica el **gate de pipeline** (no hay otra orden activa en la máquina + cooldown) — ver §4.2.
+2. Crea **análisis** + **alerta** + **orden** (sin técnico aún).
+3. Ejecuta **S-1** (3 modelos binarios) vía `predictmaint-ml`.
+4. Calcula el **nivel de riesgo en el BACKEND** a partir del score del modelo líder y los umbrales
+   configurables de `configuracion_alertas` (NO usa el `nivelRiesgo` que devuelve el ML) — ver §4.3.
+5. Si el score supera `umbral_ensemble_falla` → **S-2** (3 modelos multiclase).
+6. **Siempre que corrió S-2** → **S-3** (plan RAG). El "agreement mínimo" es informativo y solo
+   decide el `tipoFallo` final; **no** bloquea la generación del RAG — ver §4.5.
+7. Asigna un **técnico disponible** según nivel de riesgo y tipo de fallo; si no hay, agenda reintento.
+8. Persiste todo en PostgreSQL para que el frontend muestre Monitoreo, Análisis (3 tabs) e Historial con **datos persistidos de la simulación** (no datos mock del frontend).
 
 El dataset `ai4i2020.csv` se usa de dos formas:
 
@@ -39,16 +47,18 @@ La aleatoriedad hace que cada demo sea distinta: distintas máquinas, tipos de f
 |------------|-----------|--------|
 | Pipeline completo | `predictmaint-api/src/sensor-readings/sensor-readings.service.ts` | ✅ Implementado |
 | Reglas de sensor RN-01..04 | `predictmaint-api/src/common/utils/sensor-rules.util.ts` | ✅ Implementado |
+| Cálculo de nivel de riesgo (backend) | `predictmaint-api/src/common/utils/risk-level.util.ts` | ✅ Implementado |
 | Cliente ML (S-1/S-2/S-3) | `predictmaint-api/src/ml-gateway/ml-gateway.service.ts` | ✅ Implementado |
 | Inferencia binaria/multiclase | `predictmaint-ml/main.py` | ✅ Implementado |
-| Recomendaciones estáticas (RAG base) | `predictmaint-ml/rag.py` | ✅ Implementado (mapa fijo por tipo) |
-| Asignación de técnico | `predictmaint-api/src/technicians/technicians.service.ts` | ✅ Parcial (ver §8) |
+| Recomendaciones (RAG) | `predictmaint-ml/rag.py` | ✅ Implementado (con fuentes desde BD) |
+| Asignación de técnico (turno + especialidad) | `predictmaint-api/src/technicians/technicians.service.ts` | ✅ Implementado |
+| Job reintento de asignación | `predictmaint-api/src/jobs/assignment-retry.service.ts` | ✅ Implementado |
+| Job escalamiento por SLA | `predictmaint-api/src/jobs/escalation.service.ts` | ✅ Implementado |
+| Job generación automática de fallos | `predictmaint-api/src/jobs/auto-fault.service.ts` | ✅ Implementado (opt-in por env) |
+| Stream en vivo (SSE) | `predictmaint-api/src/monitoring/monitoring-sse.*.ts` | ✅ Implementado |
 | Vista Monitoreo | `predictmaint-web/src/components/dashboard/monitoring-view.tsx` | ✅ Conectada a API |
 | Vista Análisis (3 tabs) | `predictmaint-web/src/components/dashboard/analysis-view.tsx` | ✅ Conectada a API |
 | Vista Historial | `predictmaint-web/src/components/dashboard/orders-history-view.tsx` | ✅ Conectada a API |
-| Simulador aleatorio (terminal) | `scripts/simulate-sensor-stream.py` | ❌ Pendiente (script en §6.3) |
-| Tabs bloqueados por etapa S-1/S-2 | `analysis-view.tsx` | ❌ Pendiente (hoy todos son clicables) |
-| Filtro de técnico por turno actual | `technicians.service.ts` | ❌ Pendiente |
 
 ---
 
@@ -56,41 +66,58 @@ La aleatoriedad hace que cada demo sea distinta: distintas máquinas, tipos de f
 
 ```mermaid
 sequenceDiagram
-    participant Sim as Simulador aleatorio (terminal)
+    participant Sim as Origen (script / job auto-fault)
     participant API as predictmaint-api
     participant ML as predictmaint-ml
     participant DB as PostgreSQL
     participant Web as predictmaint-web
 
-    Sim->>API: POST /sensor-readings
+    Sim->>API: POST /sensor-readings (público, sin JWT)
+    API->>DB: Guarda lectura_sensor (powerW calculado)
     API->>API: evaluateSensorRules (RN-0x)
-    alt No supera umbral
-        API->>DB: Guarda lectura_sensor
+    alt No supera regla
         API-->>Sim: { reading }
-    else Supera umbral
-        API->>DB: alerta (analizando) + orden (pendiente)
-        API->>ML: POST /predict (S-1)
-        ML-->>API: ensemble_avg, 3 modelos binarios
-        API->>DB: prediccion_binaria × 3
-        alt ensemble_avg >= umbral_ensemble_falla
-            API->>ML: POST /classify (S-2)
-            ML-->>API: tipoPredicho, agreement, 3 modelos
-            API->>DB: prediccion_multiclase × 3
-            alt agreement >= agreement_minimo_s3
-                API->>ML: POST /rag (S-3)
-                ML-->>API: plan estático (3 acciones)
-                API->>DB: plan_rag + accion_rag
+    else Supera regla
+        API->>API: shouldSkipPipeline (orden activa / cooldown)
+        alt Gate bloquea
+            API-->>Sim: { reading, skipped, cooldownMinutosRestantes }
+        else Continúa
+            API->>DB: analisis_fallo + alerta + orden (pendiente)
+            API->>ML: POST /predict (S-1)
+            ML-->>API: confianzaLider, 3 modelos binarios
+            API->>DB: prediccion_fallo × 3
+            API->>API: nivelRiesgo = nivelRiesgoFromScore(score, umbrales de configuracion_alertas)
+            API->>DB: analisis.nivelRiesgo, alerta.nivelRiesgo
+            alt score < umbral_ensemble_falla
+                API->>DB: orden + alerta → FINALIZADO (regla descartada por ML)
+            else score >= umbral_ensemble_falla
+                API->>ML: POST /classify (S-2)
+                ML-->>API: tipoPredicho, 3 modelos
+                API->>DB: clasificacion_fallo × 3
+                Note over API: agreement mínimo solo define tipoFallo (informativo)
+                API->>ML: POST /rag (S-3) — SIEMPRE tras S-2
+                ML-->>API: acciones + fuentes
+                API->>DB: recomendacion_rag + recomendacion_rag_fuente
+                API->>API: assignForOrder(nivel, tipoFallo)
+                alt Hay técnico
+                    API->>DB: orden.idTecnico, alerta.idTecnico
+                else Sin técnico
+                    API->>DB: proximoReintentoAsignacion (job retry lo toma luego)
+                end
+                API->>API: emit order.created (notificaciones)
             end
-            API->>API: assignForOrder(nivel, tipoFallo)
-            API->>DB: orden.tecnicoId, alerta.tecnicoId
+            API-->>Sim: { reading, alert, order }
         end
-        API->>API: emit order.created
-        API-->>Sim: { reading, alert, order }
     end
+    API-->>Web: SSE /monitoring/stream (reading / alert en vivo)
     Web->>API: GET /alerts/active, /orders, /predictions/...
     API->>DB: Consulta persistida
     API-->>Web: Datos reales para UI
 ```
+
+> **Jobs en paralelo** (no aparecen en el diagrama por evento): cada minuto corren
+> `assignment-retry` (reasigna órdenes sin técnico), `escalation` (escala por SLA vencido) y,
+> si está habilitado, `auto-fault` (inyecta lecturas de fallo reusando este mismo endpoint). Ver §4.7.
 
 ---
 
@@ -117,7 +144,21 @@ Implementado en `SensorReadingsService.create()`:
 
 - `power_w` lo calcula el backend: `torque × rpm × 2π / 60`.
 - `maquinaId` debe existir en tabla `maquina` (seed: `M-001`..`M-005`).
-- Este endpoint **no requiere JWT** hoy (pensado para ingestión de sensores/simulador).
+- Este endpoint es **público** (`@Public()`, sin JWT): pensado para ingestión de sensores/simulador
+  y reutilizado por el job interno `auto-fault`.
+- La lectura **siempre se persiste** primero en `lectura_sensor`, aunque no dispare ninguna regla.
+
+### 4.1b Gate de pipeline (`shouldSkipPipeline`)
+
+Antes de crear orden/alerta, el backend evita duplicar trabajo sobre la misma máquina:
+
+- **Pipeline activo:** si la máquina ya tiene una orden en estado distinto de `FINALIZADO`, no se
+  arranca otro pipeline; se devuelve `{ skipped: 'pipeline_activo', order }`.
+- **Cooldown:** si el último análisis de la máquina ocurrió hace menos de
+  `EVALUACION_COOLDOWN_MINUTOS` (env, default en `constants.config.ts`), se devuelve
+  `{ skipped: 'cooldown', cooldownMinutosRestantes }`.
+
+En ambos casos la lectura queda guardada, pero **no** se genera nueva alerta/orden.
 
 ### 4.2 Reglas de disparo (`evaluateSensorRules`)
 
@@ -134,43 +175,68 @@ Si ninguna regla se dispara → solo se guarda la lectura, **sin alerta ni orden
 
 > **Nota:** Una fila del CSV puede cumplir varias reglas; el backend usa la primera (RN-01 tiene prioridad).
 
-### 4.3 Etapa S-1 — Predicción binaria
+### 4.3 Etapa S-1 — Predicción binaria y nivel de riesgo
 
 - Llama a `predictmaint-ml` → `POST /predict`.
 - Modelos: Regresión Logística, Random Forest, XGBoost.
-- Persiste 3 filas en `prediccion_binaria`.
-- Calcula `ensemble_avg` (promedio de probabilidades de falla).
-- Actualiza `alerta.ensembleAvg`, `alerta.nivel`, `orden.ensembleAvg`, `orden.nivelRiesgo`.
-- Estado alerta: `analizando` → `clasificando`.
+- Persiste 3 filas en `prediccion_fallo`.
+- `scoreLider` = `confianzaLider` del modelo líder (alias histórico: `ensembleAvg`, 0–1).
+- Estado alerta: `analizando` → (si hay falla) `clasificando` → `pendiente`.
 
-**Umbral de falla:** clave `umbral_ensemble_falla` en tabla `configuracion` (default **0.50**, seed en `20260617000008-seed-configuracion.js`).
+**Nivel de riesgo — recalculado en el BACKEND (importante):**
+
+El `nivelRiesgo` **no** se toma del campo que devuelve el ML. Se recalcula con
+`computeNivelRiesgo(scoreLider)` → `nivelRiesgoFromScore()` (en `risk-level.util.ts`) usando los
+umbrales **configurables** de la tabla `configuracion_alertas` (pantalla *Configuración → Alertas*):
+
+| Condición sobre el score | Nivel |
+|--------------------------|-------|
+| `score < riesgoBajo` (default 0.40) | LOW |
+| `riesgoBajo ≤ score < riesgoMedio` (default 0.65) | MEDIUM |
+| `riesgoMedio ≤ score < riesgoAlto` (default 0.85) | HIGH |
+| `score ≥ riesgoAlto` | CRITICAL |
+
+Así, ajustar los umbrales en Configuración **sí** cambia el nivel que ven Monitoreo, asignación y
+escalamiento. Solo si el score viniera nulo se usaría como respaldo el `nivelRiesgo` del ML.
+
+**Umbral de falla:** campo `umbralEnsembleFalla` en `configuracion_alertas` (default **0.50**; si no
+está, cae a `riesgoMedio` o a `UMBRAL_ENSEMBLE_FALLA_DEFAULT`). Si `scoreLider < umbral` → la orden
+y la alerta se cierran como `FINALIZADO` ("regla descartada por ML") y el pipeline no continúa.
 
 ### 4.4 Etapa S-2 — Clasificación multiclase
 
-Solo si `ensemble_avg >= umbral_ensemble_falla`:
+Solo si `scoreLider >= umbralEnsembleFalla`:
 
 - Llama a `POST /classify`.
 - Modelos: Decision Tree, LightGBM, SVM.
-- Persiste 3 filas en `prediccion_multiclase`.
-- `tipo_fallo` final = tipo del modelo líder (LightGBM).
+- Persiste 3 filas en `clasificacion_fallo`.
 - `agreement`: ALTO (3/3), MEDIO (2/3), BAJO (1/3).
+- `tipoFalloFinal` se resuelve con `resolveTipoFalloByMinAgreement(votes, agreementMinimoS3)`:
+  si los votos del ganador alcanzan el mínimo configurado, se usa ese tipo; si no, cae al tipo de
+  la regla disparada (`triggered.tipoFallo`). **El "agreement mínimo" es informativo y solo afecta
+  qué tipo de fallo se elige — NO bloquea el RAG ni la asignación.**
 - Registra evento `clasificacion_s2` en `evento_orden`.
 
-### 4.5 Etapa S-3 — Recomendaciones (estáticas por ahora)
+### 4.5 Etapa S-3 — Recomendaciones (RAG)
 
-Solo si `agreement >= agreement_minimo_s3` (default **MEDIO**):
+**Se ejecuta SIEMPRE que se ejecutó S-2** (es decir, siempre que hubo falla confirmada y existe un
+modelo líder de clasificación). No hay ningún gate de agreement que la condicione.
 
-- Llama a `POST /rag` con `{ tipoFallo, maquinaId, historial: [] }`.
-- `predictmaint-ml/rag.py` devuelve **3 acciones fijas** por tipo (HDF/PWF/TWF/OSF).
-- RNF → solo inspección manual, sin plan automático completo.
-- Persiste `plan_rag`, `accion_rag`, `plan_rag_fuente`.
-- Registra evento `rag_s3`.
+- Llama a `POST /rag` con `{ tipoFallo, maquinaId, historial: [], fuentes }`, donde `fuentes` son
+  las filas activas de `fuente_rag` en la BD.
+- `predictmaint-ml/rag.py` devuelve acciones + fuentes por tipo (HDF/PWF/TWF/OSF/RNF).
+- Persiste una `recomendacion_rag` (con `buildGeneralRecommendation`) y sus vínculos en
+  `recomendacion_rag_fuente`.
+- Registra evento `rag_s3` ("Recomendaciones RAG generadas").
 
-> Más adelante reemplazarás `rag.py` por recuperación real de fuentes + LLM; el contrato HTTP `/rag` ya está listo.
+> Más adelante `rag.py` puede evolucionar a recuperación real + LLM; el contrato HTTP `/rag` y las
+> tablas `recomendacion_rag` / `recomendacion_rag_fuente` ya están listas.
 
 ### 4.6 Asignación de técnico y orden
 
-Tras S-2 (si hubo falla), siempre se intenta asignar técnico vía `TechniciansService.assignForOrder()`:
+Tras S-2 (si hubo falla), siempre se intenta asignar técnico vía `TechniciansService.assignForOrder()`.
+Si **no** hay candidato, se agenda `proximoReintentoAsignacion` y el job `assignment-retry` (§4.7)
+lo reintenta más tarde. Criterios:
 
 | Nivel de riesgo | Criterio |
 |-----------------|----------|
@@ -188,8 +254,9 @@ Tras S-2 (si hubo falla), siempre se intenta asignar técnico vía `TechniciansS
 | OSF | mecanico |
 | RNF | general |
 
-Si encuentra candidato → `tecnico.estado = en_intervencion`, se vincula a `orden` y `alerta`.
-Emite evento `order.created` (notificaciones stub).
+`findAvailable()` filtra por **turno actual** (`getCurrentTurno()`) y excluye técnicos
+`fuera_de_turno`. Si encuentra candidato → se vincula a `orden` y `alerta` y se registra evento
+`respuesta_tecnico`. Emite evento `order.created` (notificaciones).
 
 **Técnicos seed** (`20260617000011-seed-demo-data.js`):
 
@@ -198,6 +265,27 @@ Emite evento `order.created` (notificaciones stub).
 | 1 | Henry Orbegoso | mecanico | mañana |
 | 2 | Carlos Mendoza | electrico | tarde |
 | 3 | Luis Torres | general | noche |
+
+### 4.7 Jobs / cron internos
+
+Además del pipeline por evento, el backend corre tres cron jobs (NestJS `@Cron`).
+Ubicación: `predictmaint-api/src/jobs/`.
+
+| Job | Archivo | Frecuencia | Qué hace |
+|-----|---------|-----------|----------|
+| **Reintento de asignación** | `assignment-retry.service.ts` | cada minuto (`0 * * * * *`) | Toma órdenes `PENDIENTE` **sin técnico** cuyo `proximoReintentoAsignacion` ya venció (y que ya pasaron por S-2). Reintenta `assignForOrder()`; si logra, asigna y emite `order.created`; si no, reprograma el siguiente intento e incrementa `intentosAsignacion` (evento `reintento_asignacion`). |
+| **Escalamiento por SLA** | `escalation.service.ts` | cada minuto (`30 * * * * *`) | Toma órdenes `PENDIENTE` **ya asignadas** que superaron el SLA de su nivel (`tiemposAtencionJson` de `configuracion_alertas`; `null` = sin SLA, p. ej. LOW). Registra evento `escalado` (idempotente, una sola vez) y emite `order.escalated` para notificar al supervisor. |
+| **Generación automática de fallos** | `auto-fault.service.ts` | tick cada 15 s, dispara cada `DEMO_AUTOFAULT_MIN` min | **Opt-in** con `DEMO_AUTOFAULT_ENABLED=true`. Lee `ai4i2020.csv`, elige una máquina **sin orden activa** y le inyecta una lectura de fallo llamando al propio `POST /sensor-readings` (reusa el pipeline real). Sesga el tipo de fallo por máquina (`DEMO_AUTOFAULT_BIAS`) para que aparezcan fallos repetitivos; respeta un máximo de órdenes activas (`DEMO_AUTOFAULT_MAX_ACTIVAS`). **No** completa órdenes (eso es manual). |
+
+> `auto-fault` es la alternativa interna al script de terminal del §6: con él, el backend genera su
+> propio "monitoreo en vivo" sin necesidad de ejecutar nada aparte.
+>
+> Variables de entorno de `auto-fault`: `DEMO_AUTOFAULT_ENABLED`, `DEMO_AUTOFAULT_MIN` (default 30),
+> `DEMO_AUTOFAULT_BIAS` (0.7), `DEMO_AUTOFAULT_MAX_ACTIVAS` (3), `DEMO_AUTOFAULT_HARD_RATE` (0.45),
+> `DEMO_DATASET_PATH` (ruta opcional al CSV).
+
+> **Nota:** `jobs.service.ts` contiene además algunos `@Cron` *stub* heredados (dispatch horario,
+> reset diario, escaneo de fallos repetitivos) que solo registran un log de depuración.
 
 ---
 
@@ -469,8 +557,8 @@ y carga los resultados persistidos del pipeline:
 | Tab | Endpoint | Cuándo debe mostrarse |
 |-----|----------|------------------------|
 | **1 Predicción (S-1)** | `GET /predictions/binary/:orderId` | Siempre (hay orden) |
-| **2 Clasificación (S-2)** | `GET /predictions/multiclass/:orderId` | Solo si S-1 predijo FALLA (`ensemble_avg ≥ umbral`) |
-| **3 Recomendaciones (S-3)** | `GET /rag/plan/:orderId` | Solo si S-2 corrió y `agreement ≥ mínimo` |
+| **2 Clasificación (S-2)** | `GET /predictions/multiclass/:orderId` | Solo si S-1 confirmó FALLA (`score ≥ umbralEnsembleFalla`) |
+| **3 Recomendaciones (S-3)** | `GET /rag/plan/:orderId` | Siempre que S-2 corrió (el RAG no depende del agreement) |
 
 **Comportamiento deseado (pendiente de implementar en UI):**
 
@@ -510,16 +598,13 @@ con `tipoFallo`, `nivelRiesgo`, `tecnicoId`, `ensembleAvg` y fechas de detecció
 - [ ] Auto-seleccionar tab 3 cuando exista plan RAG.
 - [ ] Mostrar lectura del sensor de la orden (`GET /sensor-readings` o incluir en `GET /orders/:id`).
 
-### 8.2 Backend — asignación por turno
+### 8.2 Backend — asignación por turno (✅ implementado)
 
 **Archivo:** `predictmaint-api/src/technicians/technicians.service.ts`
 
-Hoy `findAvailable()` no filtra por **turno actual** ni por `fuera_de_turno`.
-Según el modelo de datos §4.4, el criterio debería incluir:
-
-- [ ] Determinar turno activo según hora local (mañana 06–14, tarde 14–22, noche 22–06).
-- [ ] Filtrar técnicos cuyo `turno` coincida **o** estén en turno cruzado configurado.
-- [ ] Excluir `estado = fuera_de_turno`.
+`findAvailable()` ya filtra por **turno actual** (`getCurrentTurno()`, en `shift.util.ts`) y excluye
+técnicos `fuera_de_turno`. El reintento de la asignación cuando no hay candidato lo cubre el job
+`assignment-retry` (§4.7). Posibles mejoras futuras: turnos cruzados configurables.
 
 ### 8.3 Técnico hidráulico para HDF
 
@@ -529,15 +614,17 @@ Para pruebas realistas de HDF:
 - [ ] Añadir técnico hidráulico en seeder, **o**
 - [ ] Cambiar fallback: si no hay hidráulico, usar mecanico (como ya hace HIGH con lista vacía → todos).
 
-### 8.4 Simulador aleatorio y refresh
+### 8.4 Origen de lecturas y refresh
 
-- [ ] Crear `scripts/simulate-sensor-stream.py` con modo aleatorio (código en §6.3).
-- [ ] Añadir `refreshInterval` en hooks de Monitoreo para ver llegar alertas sin recargar.
+- Opción A: script de terminal `scripts/simulate-sensor-stream.py` (modo aleatorio, código en §6.3).
+- Opción B: job interno `auto-fault` (`DEMO_AUTOFAULT_ENABLED=true`, §4.7), sin scripts externos.
+- Refresco en vivo: ya hay **SSE** (`/monitoring/stream`) además del polling de Monitoreo.
 
 ### 8.5 RAG dinámico (fase posterior)
 
-- [ ] Reemplazar mapa estático en `rag.py` por recuperación de `fuente_rag` + LLM.
-- [ ] El contrato `POST /rag` y tablas `plan_rag`/`accion_rag` **no cambian**.
+- [ ] Evolucionar `rag.py` hacia recuperación real desde `fuente_rag` + LLM (hoy genera acciones por
+      tipo y ya recibe las fuentes activas desde la BD).
+- [ ] El contrato `POST /rag` y las tablas `recomendacion_rag` / `recomendacion_rag_fuente` **no cambian**.
 
 ---
 
@@ -569,32 +656,45 @@ npm run dev
 | predictmaint-ml | `API_KEY` | `ml-secret-key` (debe coincidir) |
 | predictmaint-api | `DATABASE_SYNC` | `true` (dev) |
 | predictmaint-api | `DATABASE_SEED` | `true` (primera vez) |
+| predictmaint-api | `EVALUACION_COOLDOWN_MINUTOS` | cooldown del gate de pipeline (§4.1b), opcional |
+| predictmaint-api | `DEMO_AUTOFAULT_ENABLED` | `true` para activar el job auto-fault (§4.7), opcional |
 | predictmaint-web | `NEXT_PUBLIC_API_URL` | `http://localhost:3001` |
 
 ### 9.3 Secuencia de prueba manual
 
 1. Login: `operador@planta.pe` / `password123`.
 2. Abrir `/dashboard/monitoring`.
-3. Ejecutar el simulador aleatorio: `python scripts/simulate-sensor-stream.py` (§6.4).
-4. Verificar en Monitoreo: alertas activas con `ensemble_avg` y nivel.
+3. Generar lecturas: el script `python scripts/simulate-sensor-stream.py` (§6.4) **o** activar el job
+   `auto-fault` (`DEMO_AUTOFAULT_ENABLED=true`, §4.7) y dejar que el backend inyecte fallos solo.
+4. Verificar en Monitoreo (se actualiza en vivo por SSE): alertas activas con score y nivel.
 5. Clic **Ver análisis** en una máquina → tabs S-1/S-2/S-3 con datos de modelos.
-6. Abrir `/dashboard/orders` → órdenes nuevas con técnico asignado.
-7. Abrir detalle de orden → timeline con eventos `deteccion_s1`, `clasificacion_s2`, `rag_s3`, `respuesta_tecnico`.
+6. Abrir `/dashboard/orders` → órdenes nuevas con técnico asignado (o pendientes de reintento).
+7. Abrir detalle de orden → timeline con eventos `deteccion_s1`, `clasificacion_s2`, `rag_s3`,
+   `respuesta_tecnico` (y, si aplica, `reintento_asignacion` / `escalado`).
 
 ### 9.4 Verificación en base de datos
 
+> Nota: los nombres de tabla/columna pueden variar según el esquema activo; ajusta a tu BD.
+
 ```sql
-SELECT id, maquina_id, estado, nivel_riesgo, tipo_fallo_codigo, tecnico_id
-FROM orden ORDER BY detectado_en DESC LIMIT 10;
+SELECT o.codigo, o.estado, o.id_tecnico, o.proximo_reintento_asignacion,
+       a.nivel_riesgo, a.ensemble_avg, a.prediccion
+FROM orden o
+JOIN analisis_fallo a ON a.id_analisis = o.id_analisis
+ORDER BY o.fecha_creacion DESC LIMIT 10;
 
-SELECT id, orden_id, maquina_id, estado, ensemble_avg FROM alerta
-ORDER BY creado_en DESC LIMIT 10;
+SELECT codigo, estado, nivel_riesgo, id_tecnico FROM alerta
+ORDER BY fecha_alerta DESC LIMIT 10;
 
-SELECT orden_id, modelo, prediccion, probabilidad FROM prediccion_binaria
-WHERE orden_id = 'ORD-001';
+SELECT id_analisis, id_modelo, prediccion, probabilidad, es_lider
+FROM prediccion_fallo ORDER BY id_prediccion DESC LIMIT 10;
 
-SELECT orden_id, modelo, tipo_predicho_codigo FROM prediccion_multiclase
-WHERE orden_id = 'ORD-001';
+SELECT id_analisis, id_modelo, id_tipo_fallo, es_lider
+FROM clasificacion_fallo ORDER BY id_clasificacion DESC LIMIT 10;
+
+-- Eventos del pipeline + jobs (timeline)
+SELECT id_orden, etapa, descripcion, fecha_evento
+FROM evento_orden ORDER BY fecha_evento DESC LIMIT 20;
 ```
 
 ---
@@ -604,10 +704,12 @@ WHERE orden_id = 'ORD-001';
 | Síntoma | Causa probable | Solución |
 |---------|----------------|----------|
 | `{ reading }` sin alert/order | Lectura no supera RN-0x | Usar filas de §5.3 o §6.2 |
+| `{ reading, skipped }` | Gate de pipeline activo o cooldown (§4.1b) | Esperar a que finalice la orden activa o bajar `EVALUACION_COOLDOWN_MINUTOS` |
 | Error 503 en pipeline | ML no levantado o modelos sin entrenar | `python train.py` + uvicorn |
 | Error 401 ML | `ML_API_KEY` ≠ `API_KEY` | Unificar en ambos `.env` |
-| Tab 2/3 vacíos | S-1 predijo SIN FALLA o agreement bajo | Bajar umbral o usar lectura con fallo claro |
-| Sin técnico asignado | Ninguno `disponible` | Resetear estados en BD o crear más técnicos |
+| Tab 2 vacío | S-1 predijo SIN FALLA (`score < umbralEnsembleFalla`) | Bajar umbral en Configuración → Alertas o usar lectura con fallo claro |
+| Nivel de riesgo no cambia | Umbrales de `configuracion_alertas` mal ajustados | El nivel se calcula en backend con esos umbrales (§4.3); ajustarlos |
+| Sin técnico asignado | Ninguno disponible en el turno actual | El job `assignment-retry` lo reintenta (§4.7); o resetear estados / crear técnicos |
 | Historial vacío | Pipeline no completó (solo lecturas normales) | Enviar lecturas que disparen reglas |
 | Puerto 8000 ocupado | Otro proceso usa el puerto | `uvicorn ... --port 8001` y actualizar `ML_SERVICE_URL` |
 
@@ -619,10 +721,17 @@ WHERE orden_id = 'ORD-001';
 |-----------------|---------|
 | Orquestación pipeline | `predictmaint-api/src/sensor-readings/sensor-readings.service.ts` |
 | Reglas RN-0x | `predictmaint-api/src/common/utils/sensor-rules.util.ts` |
+| Nivel de riesgo (backend) | `predictmaint-api/src/common/utils/risk-level.util.ts` |
+| Resolución de tipo por agreement | `predictmaint-api/src/common/utils/classify-fault.util.ts` |
+| Umbrales configurables | `predictmaint-api/src/database/models/configuracion-alertas.model.ts` |
 | Gateway ML | `predictmaint-api/src/ml-gateway/ml-gateway.service.ts` |
-| Asignación técnico | `predictmaint-api/src/technicians/technicians.service.ts` |
+| Asignación técnico (turno/especialidad) | `predictmaint-api/src/technicians/technicians.service.ts` |
+| Job reintento de asignación | `predictmaint-api/src/jobs/assignment-retry.service.ts` |
+| Job escalamiento por SLA | `predictmaint-api/src/jobs/escalation.service.ts` |
+| Job generación automática de fallos | `predictmaint-api/src/jobs/auto-fault.service.ts` |
+| Stream SSE | `predictmaint-api/src/monitoring/monitoring-sse.service.ts` |
 | Inferencia S-1/S-2 | `predictmaint-ml/main.py` |
-| Plan estático S-3 | `predictmaint-ml/rag.py` |
+| Recomendaciones S-3 | `predictmaint-ml/rag.py` |
 | Entrenamiento | `predictmaint-ml/train.py` |
 | Vista Monitoreo | `predictmaint-web/src/components/dashboard/monitoring-view.tsx` |
 | Vista Análisis | `predictmaint-web/src/components/dashboard/analysis-view.tsx` |

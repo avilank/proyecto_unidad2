@@ -10,7 +10,7 @@ Documento narrativo de **cada ruta** del sistema: qué hace el usuario o el sist
 - **Backend** — controlador, servicio y modelos implicados.
 - **ML** — solo si el endpoint llama a FastAPI.
 
-Índice rápido: [Parte 1 Frontend](#parte-1--frontend-predictmaint-web) · [Parte 2 Backend](#parte-2--backend-predictmaint-api) · [Parte 3 ML](#parte-3--servicio-ml-predictmaint-ml) · [Jobs sin HTTP](#jobs-programados-sin-ruta-http)
+Índice rápido: [Parte 1 Frontend](#parte-1--frontend-predictmaint-web) · [Parte 2 Backend](#parte-2--backend-predictmaint-api) · [Automatización y notificaciones](#módulo-automatización-y-envío-de-notificaciones) · [Parte 3 ML](#parte-3--servicio-ml-predictmaint-ml) · [Jobs programados](#jobs-programados-sin-ruta-http)
 
 ---
 
@@ -657,38 +657,179 @@ Documento narrativo de **cada ruta** del sistema: qué hace el usuario o el sist
 
 ---
 
-## Módulo: `NotificationsModule` — Notificaciones
+## Módulo: `NotificationsModule` — Notificaciones (endpoints REST)
+
+> Flujo completo de automatización: ver [Módulo Automatización y envío de notificaciones](#módulo-automatización-y-envío-de-notificaciones).
 
 ### `GET /notifications/log` — Log de mensajes
 
-**Flujo:** Historial paginado de emails/WhatsApp enviados (canal, destinatario, estado, orden).
+**Flujo:** Historial paginado de emails/WhatsApp enviados (canal, destinatario, estado, orden, tipo de envío). Cada fila corresponde a un registro en `mensaje_enviado` creado tras un envío exitoso o fallido.
 
-**Frontend:** `analytics.repository.ts` → panel en analítica
+**Frontend:** `analytics.repository.ts` → tabla en `/dashboard/analytics` (`csv-log-table.tsx`)
 
 **Backend:**
 - `predictmaint-api/src/notifications/notifications.controller.ts`
-- `predictmaint-api/src/notifications/notifications.service.ts`
-- Integraciones: nodemailer (SMTP) y webhook n8n (`SEND_EMAIL_WEBHOOK`)
+- `predictmaint-api/src/notifications/notifications.service.ts` — `getLog()`
 
 ---
 
-### `POST /notifications/send` — Enviar notificación
+### `POST /notifications/send` — Enviar notificación manual
 
-**Flujo:** Dispara envío al técnico asignado según reglas de canal. Puede invocarse tras asignación o manualmente.
+**Flujo:** Recibe `{ orderId, tecnicoId }`. Carga la orden y reutiliza `notifyTechnicianAssignment()` — el mismo pipeline que la asignación automática. Útil para reenvíos o pruebas vía Swagger.
 
-**Frontend:** Sin botón dedicado en UI principal; usado por jobs/backend.
+**Frontend:** Sin botón en UI; invocable desde Swagger o scripts.
 
-**Backend:** `notifications.controller.ts` + `notifications.service.ts`
+**Backend:** `notifications.controller.ts` → `notifications.service.ts` — `send()`
 
 ---
 
 ### `GET /notifications/next-dispatch` — Próximo envío programado
 
-**Flujo:** Informa cuándo corre el siguiente batch según `dispatch-schedule`.
+**Flujo:** Endpoint reservado para envíos batch por horario (`/catalog/dispatch-schedule`). Actualmente devuelve `null` (stub); el envío real es **inmediato** al asignar o escalar.
 
-**Frontend:** Posible en settings; principalmente backend/jobs.
+**Frontend:** Settings (horarios de envío); lógica batch en `JobsService` aún stub.
 
-**Backend:** `notifications.controller.ts` + `notifications.service.ts`
+**Backend:** `notifications.service.ts` — `getNextDispatch()`
+
+---
+
+## Módulo: Automatización y envío de notificaciones
+
+Sistema **event-driven** (NestJS `EventEmitter2` + listeners) que avisa por **email** y/o **WhatsApp** cuando se asigna una orden o cuando vence el SLA. No depende de que el usuario pulse un botón en la UI: se dispara desde el pipeline de sensores, los crons de jobs o `POST /notifications/send`.
+
+### Diagrama del flujo
+
+```
+Pipeline / reasignación / reintento
+        │
+        ▼
+  ORDER_CREATED_EVENT ──► OrderNotificationListener
+        │                      │
+        │                      ▼
+        │              NotificationsService.notifyTechnicianAssignment()
+        │                      │
+        │         ┌────────────┼────────────┐
+        │         ▼            ▼            ▼
+        │    ReglaNotificacion  Fallos      Acciones RAG
+        │    (canal/destino)    repetitivos  en mensaje
+        │         │
+        │         ├──► SMTP directo (nodemailer)     si MAIL_* configurado
+        │         └──► Webhook n8n (FormData)        si no hay SMTP + SEND_EMAIL_WEBHOOK
+        │
+        ▼
+  mensaje_enviado (log) ◄── GET /notifications/log
+
+EscalationService (cron 30 s)
+        │
+        ▼
+  ORDER_ESCALATED_EVENT ──► EscalationNotificationListener
+        │
+        ▼
+  NotificationsService.notifyEscalation() ──► supervisores/jefe (webhook)
+```
+
+### Flujo 1 — Notificación al asignar técnico
+
+**Flujo:** Cuando el pipeline (`sensor-readings.service.ts`) o `AssignmentRetryService` asigna un técnico, emite `ORDER_CREATED_EVENT` con `{ orderId, tecnicoId, maquinaId, nivelRiesgo }`. `OrderNotificationListener` escucha el evento y llama a `notifyTechnicianAssignment()`. El servicio:
+
+1. Lee la **regla de notificación** del nivel de riesgo (`regla_notificacion`: canal y destinatario).
+2. Si destinatario es «Nadie» o canal «Sin notificación», **no envía nada**.
+3. Construye el mensaje con `alert-message.builder.ts` (máquina, fallo S-2, lectura, plan RAG, historial, SLA).
+4. Evalúa **fallos repetitivos** en ventana: puede añadir aviso al supervisor, marcar reincidencia o anexar plan escalado.
+5. Envía al técnico y/o supervisor según regla y toggles de config.
+6. Persiste fila en **`mensaje_enviado`** (estado `entregado` o `fallido`).
+
+**Backend:**
+- Evento: `predictmaint-api/src/common/events/order.events.ts` — `ORDER_CREATED_EVENT`
+- Emisión: `sensor-readings.service.ts` (~línea 533), `assignment-retry.service.ts` (~94), `orders.service.ts` (reasignación)
+- Listener: `predictmaint-api/src/notifications/order-notification.listener.ts`
+- Lógica: `predictmaint-api/src/notifications/notifications.service.ts` — `notifyTechnicianAssignment()`, `dispatchToTechnician()`, `notifySupervisorsForAlert()`
+- Plantillas HTML/texto: `predictmaint-api/src/integrations/email/templates/assignment-notification.template.ts`
+- Builder mensaje: `predictmaint-api/src/notifications/alert-message.builder.ts`
+
+---
+
+### Flujo 2 — Reintento automático de asignación
+
+**Flujo:** Cada minuto, `AssignmentRetryService` busca órdenes `pendiente` sin técnico cuyo `proximoReintentoAsignacion` ya venció. Intenta `TechniciansService.assignForOrder()`. Si encuentra técnico, actualiza orden/alerta, registra evento y **vuelve a emitir `ORDER_CREATED_EVENT`** → misma notificación del Flujo 1. Si no hay técnico, programa siguiente reintento según nivel de riesgo.
+
+**Backend:** `predictmaint-api/src/jobs/assignment-retry.service.ts`
+
+---
+
+### Flujo 3 — Escalamiento por SLA y notificación a supervisores
+
+**Flujo:** Cada 30 segundos, `EscalationService` revisa órdenes `pendiente` **con técnico asignado** que superaron el tiempo SLA del nivel (`config` → tiempos de atención). Si aún no fue escalada, crea evento `escalado` en timeline y emite `ORDER_ESCALATED_EVENT`. `EscalationNotificationListener` llama a `notifyEscalation()`, que arma mensaje de escalamiento (técnico que no inició, minutos sin atención, enlace a la orden) y lo envía a **supervisores y jefe de planta** vía **webhook n8n** (WhatsApp + email HTML).
+
+**Backend:**
+- Cron: `predictmaint-api/src/jobs/escalation.service.ts`
+- Evento: `ORDER_ESCALATED_EVENT` en `order.events.ts`
+- Listener: `predictmaint-api/src/notifications/escalation-notification.listener.ts`
+- Envío: `notifications.service.ts` — `notifyEscalation()`
+
+---
+
+### Canales de envío (email y WhatsApp)
+
+| Canal | Cuándo se usa | Código |
+|-------|----------------|--------|
+| **SMTP directo** | `MAIL_HOST` + `MAIL_USER` + `MAIL_PASS` configurados; regla permite email | `integrations/email/smtp-email.service.ts` (nodemailer) |
+| **Webhook n8n** | SMTP no configurado **o** WhatsApp; POST multipart a `SEND_EMAIL_WEBHOOK` | `notifications/webhook-notifier.service.ts` |
+| **WhatsApp** | Regla incluye canal WhatsApp **y** técnico/supervisor tiene teléfono; técnico con `enviarWssp !== false` | Payload `phone` + `whatsappSummary` al webhook |
+| **Email vía webhook** | Sin SMTP pero regla email; técnico con `enviarCorreo === true` o nivel CRITICAL | `emailBody` en FormData al webhook |
+
+El webhook envía FormData con: `email`, `subject`, `title`, `phone`, `whatsappSummary`, `emailBody`, adjunto HTML opcional. n8n/Evolution API procesa el envío externo.
+
+**Variables `.env` (API):**
+- `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM_NAME` — SMTP directo
+- `SEND_EMAIL_WEBHOOK` — URL del flujo n8n
+- `FRONTEND_URL` — enlaces en mensajes (p. ej. `/dashboard/orders/ORD-001`)
+
+---
+
+### Configuración desde el frontend
+
+**Flujo:** En `/dashboard/settings` → pestaña **Alertas**, el supervisor edita:
+
+- **Umbrales de riesgo** y **tiempos de atención (SLA)** por nivel → `PATCH /config`
+- **Reglas de notificación** (canal: Email / WhatsApp / ambos / ninguno; destinatario: técnico / supervisor / ambos / nadie) → `GET/PATCH /catalog/notification-rules/:nivel`
+- **Acciones escaladas** por tipo de fallo → `/catalog/escalation-actions`
+- **Fallos repetitivos** (umbrales marcar / notificar supervisor / RAG escalado) → `PATCH /config`
+
+Al guardar, las reglas quedan en BD y aplican en el **próximo** envío automático.
+
+**Frontend:**
+- `predictmaint-web/src/components/dashboard/settings-view.tsx`
+- `predictmaint-web/src/components/dashboard/settings/alerts-settings-tab.tsx`
+- `predictmaint-web/src/presentation/hooks/useSettings.ts` — `useNotificationRules`, `saveNotificationRules`
+- `predictmaint-web/src/infrastructure/repositories/config.repository.ts` — `getNotificationRules`, `patchNotificationRule`
+
+**Backend catálogo:**
+- `predictmaint-api/src/config-catalog/config-catalog.controller.ts` — rutas `/catalog/notification-rules`, `/config`
+- Modelo: `predictmaint-api/src/database/models/regla-notificacion.model.ts`
+
+---
+
+### Consulta del log en analítica
+
+**Flujo:** En `/dashboard/analytics`, el panel de log carga `GET /notifications/log?page=&limit=` y muestra canal, técnico, orden, motivo (tipo fallo), estado y fecha.
+
+**Frontend:**
+- `predictmaint-web/src/components/dashboard/analytics/csv-log-table.tsx`
+- `predictmaint-web/src/infrastructure/repositories/analytics.repository.ts` — `getNotificationLog()`
+
+---
+
+### Endpoints REST del módulo
+
+| Método | Ruta | Uso en automatización |
+|--------|------|------------------------|
+| GET | `/notifications/log` | Auditoría de envíos |
+| POST | `/notifications/send` | Reenvío manual |
+| GET | `/notifications/next-dispatch` | Stub horarios batch |
+| GET/PATCH | `/catalog/notification-rules/:nivel` | Reglas canal/destinatario |
+| GET/PATCH | `/config` | SLA y umbrales repetitivos |
+| GET/PATCH | `/catalog/dispatch-schedule` | Horarios batch (futuro) |
 
 ---
 
@@ -887,12 +1028,21 @@ Documento narrativo de **cada ruta** del sistema: qué hace el usuario o el sist
 
 # Jobs programados (sin ruta HTTP)
 
-| Job | Flujo | Código |
-|-----|-------|--------|
-| **AutoFaultService** | Cada N minutos (env `DEMO_AUTOFAULT_*`) genera lectura anómala y hace `POST /sensor-readings` internamente | `predictmaint-api/src/jobs/auto-fault.service.ts` |
-| **AssignmentRetryService** | Reintenta asignar técnico a órdenes pendientes | `predictmaint-api/src/jobs/assignment-retry.service.ts` |
-| **EscalationService** | Cada 30 s revisa SLA vencido y escala | `predictmaint-api/src/jobs/escalation.service.ts` |
-| **JobsService** | Limpieza y mantenimiento diario | `predictmaint-api/src/jobs/jobs.service.ts` |
+Tareas cron del módulo **`JobsModule`** que automatizan el pipeline y las notificaciones. Trabajan junto con [Automatización y notificaciones](#módulo-automatización-y-envío-de-notificaciones).
+
+| Job | Frecuencia | Función | Relación con notificaciones |
+|-----|------------|---------|----------------------------|
+| **AutoFaultService** | cada min (respeta `DEMO_AUTOFAULT_MIN`) | Inyecta fallas demo → `POST /sensor-readings` | Pipeline crea orden + asigna técnico → `ORDER_CREATED_EVENT` → email/WhatsApp |
+| **AssignmentRetryService** | cada min (`0 * * * * *`) | Reintenta asignación si no hubo técnico disponible | Al asignar, emite `ORDER_CREATED_EVENT` → notificación al técnico |
+| **EscalationService** | cada 30 s (`30 * * * * *`) | Escala órdenes que superaron SLA sin iniciar | Emite `ORDER_ESCALATED_EVENT` → notificación a supervisores/jefe |
+| **JobsService** | horario / diario | Stubs: dispatch batch, reset diario, scan repetitivos | `handleHourlyDispatch` preparado para `/catalog/dispatch-schedule` (aún no activo) |
+
+**Código:**
+- `predictmaint-api/src/jobs/auto-fault.service.ts`
+- `predictmaint-api/src/jobs/assignment-retry.service.ts`
+- `predictmaint-api/src/jobs/escalation.service.ts`
+- `predictmaint-api/src/jobs/jobs.service.ts`
+- `predictmaint-api/src/jobs/jobs.module.ts`
 
 ---
 
@@ -917,11 +1067,12 @@ Todas las llamadas REST del navegador pasan por:
 | `/dashboard/orders/[id]` | `/orders/*`, `/rag/plan/*` |
 | `/dashboard/technicians` | `/technicians/*` |
 | `/dashboard/analytics` | `/analytics/*`, `/notifications/log` |
-| `/dashboard/settings` | `/config`, `/catalog/*`, `/ml-models/*` |
+| `/dashboard/settings` | `/config`, `/catalog/*`, `/ml-models/*`, `/catalog/notification-rules` |
 | `/dashboard/profile` | `/users/me` |
 | `/dashboard/my-work` | `/orders/my-board` |
+| Automatización (sin UI) | Eventos `order.created` / `order.escalated`, crons `JobsModule`, SMTP / `SEND_EMAIL_WEBHOOK` |
 
-**Pipeline automático (sin UI):** `AutoFaultService` → `POST /sensor-readings` → ML S-1/S-2/S-3 → orden + SSE.
+**Pipeline automático (sin UI):** `AutoFaultService` → `POST /sensor-readings` → ML S-1/S-2/S-3 → orden + asignación → `ORDER_CREATED_EVENT` → email/WhatsApp + SSE.
 
 ---
 

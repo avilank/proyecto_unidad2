@@ -5,7 +5,7 @@
 > modular por features con **Sequelize**, y un **servicio de ML en Python** independiente.
 > La estructura sigue las convenciones del proyecto de referencia `YAMBOLY`
 > (`mantenimiento-app` + `service-mantenimiento` + `mantenimiento-ia`).
-> Complementa a `DOCUMENTACION_MODELO_DE_DATOS.md`. Fecha: 2026-06-17.
+> Complementa a `DOCUMENTACION_MODELO_DE_DATOS.md`. Fecha: 2026-06-26.
 
 ---
 
@@ -28,8 +28,8 @@ predictmaint/
 
 | Servicio | Stack | Responsabilidad |
 |----------|-------|-----------------|
-| **predictmaint-web** | Next.js, React, SWR, Zustand, React Hook Form + Zod, Radix UI, Tailwind, Recharts | UI de las 19 vistas, estado de cliente, consumo de API |
-| **predictmaint-api** | NestJS, Sequelize, PostgreSQL, JWT, CASL, Swagger, event-emitter, schedule | Lógica de negocio, orquestación del pipeline, persistencia, notificaciones, jobs |
+| **predictmaint-web** | Next.js, React, SWR, Zustand, React Hook Form + Zod, Radix UI, Tailwind, Recharts, next-themes | UI de las vistas, estado de cliente, consumo de API, tema claro/oscuro, suscripción a SSE (tiempo real) |
+| **predictmaint-api** | NestJS, Sequelize, PostgreSQL, JWT, CASL, Swagger, event-emitter, schedule, SSE | Lógica de negocio, orquestación del pipeline, persistencia, notificaciones, jobs/cron, stream de eventos en tiempo real (SSE) |
 | **predictmaint-ml** | Python, FastAPI, scikit-learn, XGBoost, LightGBM | API mínima de inferencia: ejecuta los 6 modelos + motor RAG. Solo predice; **no** tiene BD ni lógica de negocio |
 
 ### Flujo de una petición (request → respuesta)
@@ -51,12 +51,17 @@ predictmaint/
 ## 2. Backend — `predictmaint-api` (NestJS)
 
 ### 2.1 Stack y patrón
-- **NestJS** modular: un módulo por dominio bajo `src/modules/<feature>/`.
+- **NestJS** modular: un módulo por dominio directamente bajo `src/<feature>/`.
 - **Sequelize** (`@nestjs/sequelize` + `sequelize-typescript`) sobre **PostgreSQL** (`pg`).
+  Los modelos viven centralizados en `src/database/models/`.
 - **Auth**: JWT (`@nestjs/jwt`) + **CASL** (`@casl/ability`) para permisos.
 - **Validación**: `class-validator` + `class-transformer` en los DTOs.
-- **Eventos**: `@nestjs/event-emitter` (listeners desacoplados, p. ej. al cambiar estado de orden).
-- **Tareas programadas**: `@nestjs/schedule` (jobs de envío de CSV, escalamientos).
+- **Eventos**: `@nestjs/event-emitter` (listeners desacoplados, p. ej. al cambiar estado de orden,
+  al crear lectura/alerta → SSE, al escalar orden → notificación).
+- **Tiempo real**: **SSE** (`@Sse`) en el módulo `monitoring` — un endpoint `stream` al que el
+  frontend se suscribe para recibir lecturas/alertas en vivo.
+- **Tareas programadas**: `@nestjs/schedule` (`@Cron`): reintento de asignación, escalamiento por
+  SLA, generación automática de fallos de demo (`auto-fault`), envío de notificaciones.
 - **Docs**: Swagger (`@nestjs/swagger`).
 
 ### 2.2 Estructura de carpetas
@@ -73,49 +78,50 @@ predictmaint-api/
 │   │   ├── auth.config.ts           # JWT secret/expiración
 │   │   ├── ml.config.ts             # URL/credenciales del servicio Python
 │   │   ├── notifications.config.ts  # WhatsApp/Email (proveedor, tokens)
-│   │   └── constants.config.ts
+│   │   └── email.config.ts          # SMTP / integración de correo
 │   │
 │   ├── common/                      # transversal a todos los módulos
-│   │   ├── common.module.ts
 │   │   ├── casl/                    # casl-ability.factory.ts (permisos)
 │   │   ├── constants/
 │   │   ├── decorators/              # @Public(), @UserContext(), @Policy()
 │   │   ├── enums/                   # NivelRiesgo, TipoFallo, EstadoOrden, Turno, Canal...
 │   │   ├── events/                  # nombres/payloads de eventos de dominio
+│   │   │   ├── order.events.ts      # ORDER_CREATED, ORDER_ESCALATED, ...
+│   │   │   └── monitoring.events.ts # MONITORING_READING, MONITORING_ALERT (→ SSE)
 │   │   ├── filters/                 # http-exception.filter.ts
-│   │   ├── guards/                  # jwt-auth.guard.ts, policies.guard.ts
+│   │   ├── guards/                  # jwt-auth.guard.ts, policies.guard.ts, sse-jwt-query.guard.ts
 │   │   ├── interceptors/            # logging, transform-response
-│   │   ├── services/
 │   │   ├── types/
-│   │   └── utils/                   # feature-engineering (Power), helpers de fecha
+│   │   └── utils/                   # feature-engineering (Power), turnos, helpers de fecha
 │   │
 │   ├── database/
+│   │   ├── models/                  # modelos Sequelize centralizados (orden, maquina, alerta...)
 │   │   ├── config/config.js         # config CLI de Sequelize
 │   │   ├── migrations/              # YYYYMMDDHHMMSS-descripcion.js
 │   │   └── seeders/                 # catálogos: tipos_fallo, niveles_riesgo, modelos_ml...
 │   │
-│   ├── jobs/                        # tareas programadas (@Cron)
+│   ├── jobs/                        # tareas programadas (@Cron) — clases planas, no subcarpetas
 │   │   ├── jobs.module.ts
-│   │   ├── message-dispatch/        # envío CSV 06:00/14:00/22:00 + alertas CRITICAL
-│   │   ├── escalation/              # escala a supervisor si vence tiempo límite
-│   │   └── repetitive-faults/       # detección de reincidencia (ventana 7 días)
+│   │   ├── assignment-retry.service.ts  # reintenta asignar técnico a órdenes pendientes
+│   │   ├── escalation.service.ts        # escala al supervisor las órdenes que vencen su SLA
+│   │   └── auto-fault.service.ts        # genera fallos de demo desde ai4i2020.csv (opt-in)
 │   │
-│   └── modules/                     # un módulo por dominio (ver 2.3)
-│       ├── auth/
-│       ├── users/
-│       ├── technicians/
-│       ├── machines/
-│       ├── sensor-readings/
-│       ├── orders/
-│       ├── alerts/
-│       ├── predictions/
-│       ├── rag/
-│       ├── repetitive-faults/
-│       ├── notifications/
-│       ├── ml-models/
-│       ├── analytics/
-│       ├── config-catalog/
-│       └── ml-gateway/
+│   ├── monitoring/                  # tiempo real (SSE)
+│   │   ├── monitoring.controller.ts     # @Sse('stream') — endpoint del stream
+│   │   ├── monitoring-sse.service.ts    # gestor de suscriptores + heartbeat + broadcast
+│   │   └── monitoring-sse.listener.ts   # @OnEvent → reenvía lecturas/alertas al stream
+│   │
+│   ├── integrations/                # adaptadores a servicios externos
+│   │   └── email/                   # envío de correo (SMTP)
+│   │
+│   ├── auth/         users/         technicians/      machines/
+│   ├── sensor-readings/             orders/           alerts/
+│   ├── predictions/ rag/            repetitive-faults/ notifications/
+│   ├── ml-models/   config-catalog/ analytics/        ml-gateway/
+│   │                                # un feature-module por dominio (ver 2.3)
+│   └── modules/                     # ⚠ scaffolding heredado del proyecto de referencia;
+│                                    #   NO se importa en app.module.ts (los módulos vivos
+│                                    #   son los planos de arriba)
 │
 ├── test/
 ├── docker/                          # Dockerfile, docker-compose (api + postgres)
@@ -165,16 +171,18 @@ modules/orders/
 | `technicians` | `tecnico`, `regla_asignacion` | 06b Gestión de Técnicos |
 | `machines` | `maquina` | Dashboard, Monitoreo, Detalle |
 | `sensor-readings` | `lectura_sensor` | TAB 1, Detalle de Orden |
-| `orders` | `orden`, `evento_orden` | 06 Historial, 07 Detalle, TAB 3 |
+| `orders` | `orden`, `evento_orden` | 06 Historial, 07 Detalle, TAB 3, Mi Trabajo (técnico) — incluye reasignación y escalamiento manual |
 | `alerts` | `alerta`, `regla_sensor` | 02 Dashboard, 03 Monitoreo |
 | `predictions` | `prediccion_binaria` (S-1), `prediccion_multiclase` (S-2) | TAB 1, TAB 2 |
 | `rag` | `plan_rag`, `accion_rag`, `fuente_rag`, `plan_rag_fuente`, `mapa_fallo_recomendacion` | TAB 3, Config 3 |
 | `repetitive-faults` | `fallo_repetitivo`, `accion_escalada` | Config 5, Analítica Repetitivos |
 | `notifications` | `mensaje_enviado`, `regla_notificacion`, plantillas WhatsApp | Config 2/4, WhatsApp, Analítica |
 | `ml-models` | `modelo_ml`, `configuracion` | Config 1 |
-| `analytics` | lecturas agregadas, KPIs, efectividad | 07 Analítica y Reportes |
-| `config-catalog` | `tipo_fallo`, `nivel_riesgo`, `horario_envio`, `configuracion` | Config 1–5 |
+| `analytics` | lecturas agregadas, KPIs, efectividad, **MTTR/MTBF** (`/analytics/reliability`) | 07 Analítica y Reportes |
+| `config-catalog` | `tipo_fallo`, `nivel_riesgo`, `horario_envio`, `configuracion`, **tiempos de atención (SLA)** | Config 1–5 |
 | `ml-gateway` | — (cliente HTTP a `predictmaint-ml`) | usado por `predictions`/`rag` |
+| `monitoring` | — (no persiste; expone SSE `monitoring/stream`) | 03 Monitoreo en Tiempo Real |
+| `jobs` | — (cron sobre `orden`/`evento_orden`/`maquina`) | reintento de asignación, escalamiento SLA, auto-fault de demo |
 
 ### 2.5 Orquestación del pipeline (servicio clave)
 El `ml-gateway` + `orders/order-creation.service.ts` implementan el flujo automático de
@@ -187,6 +195,45 @@ El `ml-gateway` + `orders/order-creation.service.ts` implementan el flujo autom�
 5. `technicians` (strategy por nivel) asigna técnico → `orders` crea `orden` (pendiente).
 6. Evento `order.created` → `notifications` envía WhatsApp/Email.
 
+### 2.6 Tiempo real con SSE (`monitoring`)
+El módulo `monitoring` expone un único endpoint **SSE** (`GET /monitoring/stream`, `@Sse`) al que
+el frontend (vista de Monitoreo) se suscribe.
+
+- `monitoring-sse.service.ts` mantiene el conjunto de suscriptores, emite un **heartbeat** cada
+  15 s y ofrece `broadcast(type, data)`.
+- `monitoring-sse.listener.ts` escucha eventos de dominio (`MONITORING_READING_EVENT`,
+  `MONITORING_ALERT_EVENT`) y los reenvía al stream como `monitoring:reading` /
+  `monitoring:alert`. Así, cada lectura/alerta procesada por la API se empuja al navegador sin
+  polling.
+- Autenticación del stream: como `EventSource` no permite cabeceras, el JWT viaja por query-string
+  y se valida con `SseJwtQueryGuard`.
+
+### 2.7 Jobs programados (`jobs`, `@Cron`)
+Tres servicios independientes (registrados en `jobs.module.ts`):
+
+- **`assignment-retry.service.ts`** — cada minuto reintenta asignar técnico a las órdenes
+  `PENDIENTE` sin `idTecnico` cuyo `proximoReintentoAsignacion` ya venció; al lograrlo emite
+  `order.created` (notificación) y registra el evento en la timeline.
+- **`escalation.service.ts` — Escalamiento por SLA** — cada minuto busca órdenes `PENDIENTE` ya
+  asignadas pero no iniciadas que superaron su **tiempo de atención (SLA)** según su nivel de
+  riesgo (`config-catalog.getTiemposAtencion()`). Registra un evento de etapa `escalado`
+  (idempotente: no escala dos veces la misma orden) y emite `ORDER_ESCALATED_EVENT`, que
+  `notifications` traduce en aviso al supervisor.
+- **`auto-fault.service.ts` — Generador automático de fallos (demo)** — opt-in vía
+  `DEMO_AUTOFAULT_ENABLED=true`. Al arrancar carga filas reales del dataset `ai4i2020.csv` (solo
+  las que disparan reglas), y cada N minutos (`DEMO_AUTOFAULT_MIN`) inyecta una lectura en una
+  máquina libre llamando al propio `POST /sensor-readings`, reutilizando el pipeline real. Sesga
+  el tipo de falla por máquina (`DEMO_AUTOFAULT_BIAS`) para que aparezcan fallos repetitivos, con
+  guardarraíl anti-saturación (`DEMO_AUTOFAULT_MAX_ACTIVAS`). No completa órdenes (eso es manual).
+
+### 2.8 Reasignación y escalamiento manual de órdenes (`orders`)
+Además del flujo automático, el supervisor opera órdenes desde la UI vía el controlador `orders`:
+
+- `POST /orders/:id/reassign` (`ReassignOrderDto`) — **reasigna** una orden a otro técnico; queda
+  registrado en la timeline (`evento_orden`) y dispara la notificación al nuevo técnico.
+- `POST /orders/:id/escalate` (`EscalateOrderDto`) — **escala** manualmente una orden (equivalente
+  manual del cron de SLA de §2.7).
+
 ---
 
 ## 3. Frontend — `predictmaint-web` (Next.js App Router)
@@ -198,6 +245,11 @@ El `ml-gateway` + `orders/order-creation.service.ts` implementan el flujo autom�
 - **Estado global**: **Zustand** (`presentation/stores`).
 - **Formularios**: React Hook Form + **Zod** (`lib/validations`).
 - **UI**: Radix UI + Tailwind (`components/ui`), gráficos con **Recharts**.
+- **Tema claro/oscuro**: **next-themes** (`ThemeProvider` en `app/layout.tsx`) con variables CSS en
+  `styles/theme.css` (`:root` = claro por defecto, `.dark` = oscuro). El `ThemeToggle`
+  (`components/common/theme-toggle.tsx`) aparece en el **sidebar** y en el **login**.
+- **Tiempo real**: el cliente abre un `EventSource` al SSE `monitoring/stream` de la API para la
+  vista de Monitoreo (lecturas/alertas en vivo).
 
 ### 3.2 Estructura de carpetas
 
@@ -213,11 +265,13 @@ predictmaint-web/
 │   │   ├── api/                     # route handlers (BFF opcional)
 │   │   └── dashboard/
 │   │       ├── page.tsx             # 02 - Dashboard General
-│   │       ├── monitoring/          # 03 - Monitoreo en Tiempo Real
+│   │       ├── monitoring/          # 03 - Monitoreo en Tiempo Real (SSE)
 │   │       ├── analysis/[machineId]/# TAB 1/2/3 (Predicción/Clasificación/RAG)
 │   │       ├── orders/              # 06 - Historial  + [id] (07 Detalle)
 │   │       ├── technicians/         # 06b - Gestión de Técnicos
-│   │       ├── analytics/           # 07 - Analítica y Reportes
+│   │       ├── my-work/             # Mi Trabajo — tablero del técnico
+│   │       ├── profile/             # Perfil del usuario (editar nombre y teléfono)
+│   │       ├── analytics/           # 07 - Analítica y Reportes (incl. MTTR/MTBF)
 │   │       │   └── repetitive/      # Analítica - Fallos Repetitivos
 │   │       └── settings/            # Config Tabs 1–5
 │   │
@@ -238,20 +292,24 @@ predictmaint-web/
 │   │   └── storage/                 # CookieStorage (token)
 │   │
 │   ├── presentation/                # ADAPTADORES DE UI
-│   │   ├── hooks/                   # useOrders, useMonitoring (SWR)
+│   │   ├── hooks/                   # useOrders, useMonitoring (SSE), useProfile (SWR)
 │   │   ├── stores/                  # Zustand: sessionStore, alertsStore, notificationsStore
-│   │   ├── providers/               # UserProvider
+│   │   ├── providers/               # UserProvider, ThemeProvider (next-themes)
 │   │   └── guards/                  # CanViews / CanComponents (permisos)
 │   │
 │   ├── components/
 │   │   ├── ui/                      # primitivos Radix+Tailwind (button, dialog, tabs...)
-│   │   ├── common/                  # sidebar, table, cards, badges, forms, search, export
+│   │   ├── common/                  # sidebar (+ ThemeToggle), topbar, table, cards, badges,
+│   │   │                            #   forms, search, export, theme-toggle.tsx
 │   │   └── dashboard/               # componentes por feature
 │   │       ├── dashboard/  monitoring/  analysis/  orders/
-│   │       ├── technicians/  analytics/  settings/
+│   │       ├── technicians/  analytics/ (incl. reliability-panel MTTR/MTBF)  settings/
+│   │       ├── profile-view.tsx     # vista de Perfil (editar nombre/teléfono)
+│   │       └── technician-board-view.tsx  # vista "Mi Trabajo" del técnico
 │   │
 │   ├── lib/validations/             # esquemas Zod (login, técnico, configuración...)
-│   ├── config/   constants/   types/   utils/   styles/
+│   ├── config/   constants/   types/   utils/
+│   └── styles/                      # theme.css (:root claro · .dark oscuro) + tokens Tailwind
 │
 ├── public/
 └── package.json
@@ -278,7 +336,9 @@ core  ←  application  ←  infrastructure
 | 06 - Historial | `/dashboard/orders` |
 | 07 - Detalle de Orden | `/dashboard/orders/[id]` |
 | 06b - Gestión de Técnicos | `/dashboard/technicians` |
-| 07 - Analítica y Reportes | `/dashboard/analytics` |
+| Mi Trabajo (tablero del técnico) | `/dashboard/my-work` |
+| Perfil de usuario (nombre + teléfono) | `/dashboard/profile` |
+| 07 - Analítica y Reportes (incl. MTTR/MTBF) | `/dashboard/analytics` |
 | Analítica - Fallos Repetitivos | `/dashboard/analytics/repetitive` |
 | Config Tabs 1–5 | `/dashboard/settings` (tabs) |
 | Modales (Confirmar RAG, Nuevo Técnico) | `@modal` + intercepting routes |
@@ -335,13 +395,26 @@ Next.js  ──REST(JWT)──►  NestJS  ──REST(API key)──►  Python 
 | Servicio | Variables |
 |----------|-----------|
 | web | `NEXT_PUBLIC_API_URL` |
-| api | `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `ML_SERVICE_URL`, `ML_API_KEY`, `WHATSAPP_TOKEN`, `SMTP_*` |
+| api | `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `ML_SERVICE_URL`, `ML_API_KEY`, `WHATSAPP_TOKEN`, `SMTP_*`, `DEMO_AUTOFAULT_ENABLED`, `DEMO_AUTOFAULT_MIN`, `DEMO_AUTOFAULT_BIAS`, `DEMO_AUTOFAULT_MAX_ACTIVAS`, `DEMO_AUTOFAULT_HARD_RATE`, `DEMO_DATASET_PATH` |
 | ml | `MODEL_ARTIFACTS_PATH`, `DATASET_PATH`, `API_KEY` |
 
 ### 5.4 Base de datos
 - Migraciones versionadas en `database/migrations/` (`YYYYMMDDHHMMSS-descripcion.js`).
 - Seeders para catálogos del modelo de datos §4 (tipos de fallo, niveles de riesgo,
   modelos ML, fuentes RAG, horarios de envío).
+
+### 5.5 KPIs de confiabilidad (MTTR / MTBF)
+`analytics` expone `GET /analytics/reliability` (por máquina y global), graficado en la vista de
+Analítica (`components/dashboard/analytics/reliability-panel.tsx`):
+- **MTTR** (tiempo medio de reparación) = promedio de `fechaFin − fechaInicio` en órdenes
+  finalizadas.
+- **MTBF** (tiempo medio entre fallas) = promedio de los intervalos entre detecciones consecutivas
+  de la misma máquina.
+
+### 5.6 Eventos en tiempo real (SSE)
+El navegador se suscribe a `GET /monitoring/stream` (`EventSource`). La API empuja eventos
+`monitoring:reading` / `monitoring:alert` (más `heartbeat` cada 15 s). El JWT se pasa por
+query-string porque `EventSource` no admite cabeceras (`SseJwtQueryGuard`).
 
 ---
 

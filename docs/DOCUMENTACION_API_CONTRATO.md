@@ -5,6 +5,8 @@
 > (`service-mantenimiento`). Complementa a `DOCUMENTACION_MODELO_DE_DATOS.md` y
 > `DOCUMENTACION_ARQUITECTURA.md`. Fecha: 2026-06-17.
 
+> **Nota:** Para la lista exhaustiva y siempre actualizada de rutas, ver `MANUAL_RUTAS.md`.
+
 ---
 
 ## 1. Convenciones globales (igual que la referencia)
@@ -45,6 +47,19 @@
 | POST | `/auth/logout` | — | `{ ok: true }` |
 
 **LoginDto:** `email: string (email)`, `password: string (min 6)`.
+
+---
+
+## 2b. `users` — Usuarios y perfil
+
+| Método | Ruta | Body / Query | Respuesta |
+|--------|------|--------------|-----------|
+| GET | `/users` | — | `User[]` (uso administrativo) |
+| GET | `/users/me` | — | `User` (perfil editable del usuario autenticado) |
+| PATCH | `/users/me` | `UpdateProfileDto` `{ nombre?, telefono? }` | `User` (perfil actualizado) |
+
+**UpdateProfileDto:** `nombre?: string`, `telefono?: string` (ambos opcionales; el usuario autenticado solo puede editar su nombre y teléfono).
+**User:** `{ id, email, nombre, telefono, rol, tecnicoId }`.
 
 ---
 
@@ -102,12 +117,20 @@
 | Método | Ruta | Query / Body | Respuesta |
 |--------|------|--------------|-----------|
 | GET | `/orders` | `?estado=&maquinaId=&tipoFallo=&tecnicoId=&algoritmo=&from=&to=&search=&page=&limit=` | `{ items: Order[], total, page, limit }` |
+| GET | `/orders/my-board` | — | Tablero del técnico: órdenes pendientes y completadas asignadas al usuario logueado (rol técnico) |
 | GET | `/orders/:id` | — | `Order` (con máquina, técnico, lectura) |
 | GET | `/orders/:id/timeline` | — | `OrderEvent[]` |
-| POST | `/orders` | `CreateOrderDto` | `Order` (normalmente la crea el pipeline) |
+| POST | `/orders` | `CreateOrderDto` `{ maquinaId, tipoFallo? }` | `Order` (normalmente la crea el pipeline) |
+| POST | `/orders/:id/start` | — | `Order` (→ `en_progreso` + `fechaInicio`; rol técnico asignado) |
 | PATCH | `/orders/:id/status` | `UpdateOrderStatusDto` `{ estado }` | `Order` |
-| POST | `/orders/:id/solution` | `RegisterSolutionDto` `{ descripcion, solucionTipo }` | `Order` (→ `finalizado`) |
-| POST | `/orders/:id/escalate` | `{ motivo }` | `Order` + notificación a supervisor |
+| POST | `/orders/:id/solution` | `RegisterSolutionDto` `{ descripcion, solucionTipo }` | `Order` (→ `finalizado`; alimenta MTTR/MTBF) |
+| POST | `/orders/:id/reject-prediction` | `RejectPredictionDto` `{ justificacion }` | `Order` (técnico rechaza la predicción ML / falsa alarma) |
+| POST | `/orders/:id/reassign` | `ReassignOrderDto` `{ tecnicoId, motivo }` | `Order` (supervisor reasigna a otro técnico) |
+| POST | `/orders/:id/escalate` | `EscalateOrderDto` `{ motivo }` | `Order` + notificación a supervisor |
+
+**RegisterSolutionDto:** `{ descripcion, solucionTipo, comentario?, esFalla?, esPrediccionCorrecta?, esClasificacionCorrecta? }`.
+**RejectPredictionDto:** `{ justificacion: string }`.
+**ReassignOrderDto:** `{ tecnicoId: number, motivo: string }`.
 
 **Order:** `{ id, maquinaId, lecturaId, tipoFallo, algoritmoClasificador, confianza, ensembleAvg, nivelRiesgo, tecnicoId, estado, solucionDescripcion, solucionTipo, detectadoEn, finalizadoEn }`.
 **Transiciones válidas:** `pendiente → en_progreso → finalizado` (otra ruta → 409).
@@ -192,7 +215,12 @@
 | GET | `/catalog/risk-levels` | — | `RiskLevel[]` |
 | GET | `/catalog/rag-sources` | — | `RagSource[]` |
 | PATCH | `/catalog/rag-sources/:id` | `{ activa }` | `RagSource` |
+| GET | `/catalog/notification-rules` | — | `NotificationRule[]` (reglas de notificación por nivel de riesgo) |
+| PATCH | `/catalog/notification-rules/:nivel` | `{ recibe?, canal? }` | `NotificationRule` (actualiza canal/destinatario) |
+| GET | `/catalog/escalation-actions` | — | `EscalationAction[]` (acciones de escalamiento por tipo de fallo) |
+| PATCH | `/catalog/escalation-actions/:tipoFallo` | `{ acciones }` | `EscalationAction` |
 | GET | `/catalog/dispatch-schedule` | — | `DispatchSchedule[]` |
+| PATCH | `/catalog/dispatch-schedule` | `{ items: DispatchScheduleItem[] }` | `DispatchSchedule[]` |
 
 ---
 
@@ -205,8 +233,25 @@
 | GET | `/analytics/faults-by-type` | `?range=` | `[{ tipoFallo, count }]` |
 | GET | `/analytics/unattended` | — | `Order[]` (pendientes sin respuesta) |
 | GET | `/analytics/recurrent-machines` | — | `[{ maquinaId, tipo, fallos }]` |
-| GET | `/analytics/sensor-trend` | `?variable=&hours=24` | series para Recharts |
+| GET | `/analytics/machine-recurrence` | `?days=7&minFallos=2&range=` | ranking de máquinas por fallos en ventana temporal configurable |
+| GET | `/analytics/availability` | — | disponibilidad operativa por máquina y global |
+| GET | `/analytics/prediction-validation` | `?range=` | cruce predicción ML vs. observación/decisión del técnico |
+| GET | `/analytics/reliability` | `?range=` | MTTR y MTBF por máquina y global |
+| GET | `/analytics/sensor-trend` | `?variable=&hours=24&maquinaId=` | series para Recharts |
 | GET | `/analytics/export` | `?type=csv&range=` | archivo CSV (descarga) |
+
+---
+
+## 13b. `monitoring` — Tiempo real (SSE)
+
+| Método | Ruta | Query | Respuesta |
+|--------|------|-------|-----------|
+| GET (SSE) | `/monitoring/stream` | `?token=<jwt>` | Stream `text/event-stream` con eventos en vivo (lectura de sensor, alerta/orden creada, asignación de técnico) |
+
+> A diferencia del resto de endpoints, **el SSE recibe el JWT por query** (`?token=`) y no por
+> header `Authorization`, porque `EventSource` del navegador no permite cabeceras personalizadas.
+> Marcado `@Public()` + guard `SseJwtQueryGuard`. Lo consume la vista de Monitoreo para refrescar
+> tarjetas de máquinas sin recargar la página.
 
 ---
 
@@ -272,16 +317,18 @@
 |-------|-----------|
 | 01 Login | `POST /auth/login` |
 | 02 Dashboard | `GET /analytics/dashboard`, `GET /alerts`, `GET /machines`, `GET /analytics/sensor-trend` |
-| 03 Monitoreo | `GET /alerts/active`, `GET /machines`, `GET /notifications/next-dispatch` |
+| 03 Monitoreo | `GET /monitoring/stream` (SSE), `GET /alerts/active`, `GET /machines`, `GET /notifications/next-dispatch` |
 | TAB 1 Predicción | `GET /orders/:id`, `GET /predictions/binary/:orderId`, `GET /machines/:id/readings` |
 | TAB 2 Clasificación | `GET /predictions/multiclass/:orderId` |
 | TAB 3 Recomendaciones | `GET /rag/plan/:orderId`, `POST /rag/plan/:orderId/accept\|reject`, `POST /orders/:id/solution` |
-| 06 Historial | `GET /orders` (filtros) |
-| 07 Detalle de Orden | `GET /orders/:id`, `GET /orders/:id/timeline`, acciones rápidas |
+| 06 Historial | `GET /orders` (filtros), `POST /orders/:id/reassign` |
+| 07 Detalle de Orden | `GET /orders/:id`, `GET /orders/:id/timeline`, `POST /orders/:id/start`, `POST /orders/:id/solution`, `POST /orders/:id/reject-prediction` |
+| Mi trabajo (técnico) | `GET /orders/my-board`, acciones sobre `/orders/:id/*` |
 | 06b Técnicos | `GET/POST/PATCH/DELETE /technicians`, `GET /catalog/...` |
-| 07 Analítica | `GET /analytics/*`, `GET /notifications/log` |
+| 07 Analítica | `GET /analytics/*` (incl. `reliability`, `availability`, `prediction-validation`, `machine-recurrence`), `GET /notifications/log` |
 | Analítica Repetitivos | `GET /repetitive-faults`, `GET /repetitive-faults/:id/history` |
-| Config 1–5 | `GET/PATCH /ml-models`, `/config`, `/catalog/*` |
+| Perfil | `GET /users/me`, `PATCH /users/me` |
+| Config 1–5 | `GET/PATCH /ml-models`, `/config`, `/catalog/*` (incl. `notification-rules`, `escalation-actions`) |
 
 ---
 
