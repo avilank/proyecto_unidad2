@@ -26,6 +26,7 @@ services:
       API_KEY: ml-secret-key
       MODEL_ARTIFACTS_PATH: /app/artifacts
       DATASET_PATH: /app/ai4i2020.csv
+      OPENROUTER_API_KEY: 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
       RAG_USE_LLM: true
       RAG_PROVIDER: openrouter
       RAG_MODEL: openai/gpt-4o-mini
