@@ -114,6 +114,10 @@ export class AnalyticsService {
     filters: ParsedAnalyticsFilters,
   ): Orden[] {
     return ordenes.filter((o) => {
+      if (filters.tipoFallo) {
+        const lider = o.analisis?.clasificaciones?.find((c) => c.esLider);
+        if (lider?.tipoFallo?.codigo !== filters.tipoFallo) return false;
+      }
       if (filters.respuestaRag) {
         if (latestRagEstado(o.respuestasRag) !== filters.respuestaRag) return false;
       }
@@ -692,7 +696,7 @@ export class AnalyticsService {
             {
               model: ClasificacionFallo,
               where: { esLider: true },
-              required: false,
+              required: Boolean(filters.tipoFallo),
               include: [tipoFalloInclude],
             },
           ],
