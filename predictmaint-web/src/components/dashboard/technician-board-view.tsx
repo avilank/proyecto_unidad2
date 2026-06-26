@@ -111,7 +111,7 @@ function BoardColumn({
       </div>
       <div className="flex flex-col gap-3">
         {!hasItems ? (
-          <p className="rounded-lg bg-black/20 px-4 py-10 text-center text-sm text-ink-muted">
+          <p className="rounded-lg border border-dashed border-border bg-surface px-4 py-10 text-center text-sm text-ink-muted">
             {emptyMessage}
           </p>
         ) : (
@@ -124,13 +124,12 @@ function BoardColumn({
 
 function orderCardStyles(order: Order, variant: 'pending' | 'completed') {
   if (variant === 'completed') {
-    return 'border-l-success bg-success/[0.1]';
+    return 'border-l-success';
   }
   if (order.estado === 'en_progreso') {
-    return 'border-l-accent bg-accent/[0.1]';
+    return 'border-l-accent';
   }
-  // Pendiente o plan RAG rechazado: sigue siendo alerta activa
-  return 'border-l-warning bg-warning/[0.1]';
+  return 'border-l-warning';
 }
 
 function OrderCard({
@@ -145,7 +144,7 @@ function OrderCard({
   return (
     <div
       className={cn(
-        'rounded-xl border-l-4 p-4 transition-colors',
+        'rounded-xl border border-border-soft border-l-4 bg-surface p-4 shadow-card transition-colors',
         orderCardStyles(order, variant),
       )}
     >
@@ -229,12 +228,7 @@ function OrderCard({
         </p>
       )}
 
-      <Button
-        size="sm"
-        fullWidth
-        onClick={onView}
-        className="border-0 bg-black/25 text-ink hover:bg-black/35"
-      >
+      <Button size="sm" variant="secondary" fullWidth onClick={onView}>
         <Eye className="mr-1.5 h-3.5 w-3.5" />
         {variant === 'pending' ? 'Ver plan RAG' : 'Ver detalle'}
       </Button>
@@ -244,7 +238,7 @@ function OrderCard({
 
 function Info({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <div className="rounded-lg bg-black/20 px-2.5 py-2">
+    <div className="rounded-lg border border-border-soft bg-surface-2 px-2.5 py-2">
       <dt className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">{label}</dt>
       <dd className={cn('mt-0.5 font-medium', highlight ? 'text-danger' : 'text-ink')}>{value}</dd>
     </div>
