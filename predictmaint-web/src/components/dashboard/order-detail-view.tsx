@@ -41,10 +41,12 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
   const isFinalized = data?.estado === EstadoOrden.FINALIZADO;
   const isPending = data?.estado === EstadoOrden.PENDIENTE;
   const isInProgress = data?.estado === EstadoOrden.EN_PROGRESO;
-  const ragEstado = rag.data?.estado ?? 'pendiente';
+  const ragEstado = rag.data?.estado ?? data?.ragEstado ?? 'pendiente';
   const hasRagPlan = (rag.data?.acciones?.length ?? 0) > 0;
   const showRagResponse = isTechnician && hasRagPlan && !isFinalized;
-  const canRegister = isInProgress || (!isTechnician && isPending);
+  const isManualRagFlow = ragEstado === 'rechazado';
+  const canRegister =
+    (isInProgress && !isManualRagFlow) || (!isTechnician && isPending);
   const backHref = isTechnician ? '/dashboard/my-work' : '/dashboard/orders';
   const backLabel = isTechnician ? '← Mi trabajo' : '← Historial';
 
@@ -71,6 +73,29 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
       await ragService.accept(orderId);
       await orderService.startOrder(orderId);
     });
+
+  const handleRejectRagAndStart = async (motivo: string) => {
+    await ragService.reject(orderId, motivo);
+    await orderService.startOrder(orderId);
+  };
+
+  const handleFinalizeManual = async ({
+    solucion,
+    observaciones,
+  }: {
+    solucion: string;
+    observaciones: string;
+  }) => {
+    await orderService.registerSolution(orderId, {
+      descripcion: solucion,
+      solucionTipo: SolucionTipo.RECHAZADA_MANUAL,
+      comentario: observaciones,
+      esFalla: false,
+      esPrediccionCorrecta: false,
+      esClasificacionCorrecta: false,
+    });
+    if (isTechnician) router.push('/dashboard/my-work');
+  };
 
   /* Atajo admin: aceptar RAG y finalizar en un paso (oculto para técnico por ahora)
   const handleAcceptRagAndFinish = () =>
@@ -162,11 +187,19 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                     <Badge variant="accent">S-1 {data.confianzaPrediccion.toFixed(1)}%</Badge>
                   )}
                   {data?.nivelRiesgo && <Badge variant="high">{data.nivelRiesgo}</Badge>}
+                  {hasRagPlan && ragEstado !== 'pendiente' && (
+                    <Badge variant={ragEstado === 'aceptado' ? 'success' : 'warning'}>
+                      Plan RAG {ragEstado === 'aceptado' ? 'aceptado' : 'rechazado'}
+                    </Badge>
+                  )}
                 </div>
 
                 <div className="grid gap-2 rounded-md border border-border-soft bg-surface-2 p-3 text-sm md:grid-cols-2">
                   <Info label="Máquina" value={data?.maquinaId ?? '—'} />
                   <Info label="Estado" value={data?.estado?.replace('_', ' ') ?? '—'} />
+                  {hasRagPlan && (
+                    <Info label="Plan RAG" value={formatRagEstadoLabel(ragEstado)} />
+                  )}
                   <Info
                     label="Inicio"
                     value={
@@ -195,11 +228,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                     }
                   />
                   <Info
-                    label="Tipo de solución"
-                    value={formatSolucionTipo(data?.solucionTipo)}
-                  />
-                  <Info
-                    label="Solución aplicada"
+                    label="Solución"
                     value={data?.solucionDescripcion ?? '—'}
                   />
                   <Info
@@ -222,7 +251,9 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                   </div>
                 )}
 
-                {isFinalized && data?.observacionTecnica && (
+                {isFinalized &&
+                  ragEstado === 'aceptado' &&
+                  data?.observacionTecnica && (
                   <div className="rounded-md border border-border-soft bg-surface-2 p-3 text-sm">
                     <p className="mb-2 font-semibold text-ink">Validación del técnico</p>
                     <div className="flex flex-wrap gap-2">
@@ -280,6 +311,9 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                   tipoFallo={data?.tipoFallo}
                   onUpdated={refresh}
                   onAccept={handleAcceptRagAndStart}
+                  onRejectAndStart={handleRejectRagAndStart}
+                  onFinalizeManual={handleFinalizeManual}
+                  showRagDecisionStatus={false}
                 />
               )}
 
@@ -288,15 +322,22 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                   <CardTitle>Registrar Solución Aplicada</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {isPending && isTechnician && ragEstado !== 'aceptado' && (
+                  {isPending && isTechnician && ragEstado !== 'aceptado' && ragEstado !== 'rechazado' && (
                     <p className="text-sm text-ink-muted">
                       {hasRagPlan
-                        ? 'Acepta las recomendaciones RAG para comenzar la intervención.'
+                        ? 'Acepta o rechaza las recomendaciones RAG para comenzar la intervención.'
                         : 'Esperando recomendaciones RAG del sistema.'}
                     </p>
                   )}
 
-                  {isInProgress && isTechnician && (
+                  {isInProgress && isTechnician && isManualRagFlow && (
+                    <p className="text-sm text-ink-soft">
+                      Intervención manual en curso. Registra tus observaciones en el panel de respuesta
+                      RAG y finaliza la orden.
+                    </p>
+                  )}
+
+                  {isInProgress && isTechnician && !isManualRagFlow && (
                     <p className="text-sm text-ink-soft">
                       Orden en progreso. Registra la solución y observaciones antes de finalizar.
                     </p>
@@ -305,11 +346,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                   {isFinalized ? (
                     <div className="space-y-3 rounded-md border border-border-soft bg-surface-2 p-3 text-sm">
                       <div>
-                        <p className="text-xs text-ink-muted">Tipo de solución</p>
-                        <p className="font-medium text-ink">{formatSolucionTipo(data?.solucionTipo)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-ink-muted">Descripción</p>
+                        <p className="text-xs text-ink-muted">Solución</p>
                         <p className="text-ink-soft">{data?.solucionDescripcion ?? '—'}</p>
                       </div>
                       <div>
@@ -369,7 +406,7 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
 
                       <div className="space-y-2">
                         <label className="text-xs text-ink-muted" htmlFor="solution-desc">
-                          Descripción de la solución
+                          Solución
                         </label>
                         <textarea
                           id="solution-desc"
@@ -435,11 +472,11 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                         <span>Finalizar Orden</span>
                       </button>
                     </>
-                  ) : (
+                  ) : !(isInProgress && isTechnician && isManualRagFlow) ? (
                     <p className="text-sm text-ink-muted">
                       La orden no admite más cambios en este estado.
                     </p>
-                  )}
+                  ) : null}
 
                   {data?.maquinaId && !isTechnician && (
                     <Button
@@ -471,19 +508,14 @@ function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatSolucionTipo(tipo?: SolucionTipo | string | null) {
-  switch (tipo) {
-    case SolucionTipo.PROPIA:
-    case 'propia':
-      return 'Solución propia';
-    case SolucionTipo.RECHAZADA_MANUAL:
-    case 'rechazada_manual':
-      return 'Rechazada / manual';
-    case SolucionTipo.CON_RAG:
-    case 'con_rag':
-      return 'Con recomendaciones RAG';
+function formatRagEstadoLabel(estado: string): string {
+  switch (estado) {
+    case 'aceptado':
+      return 'Aceptado';
+    case 'rechazado':
+      return 'Rechazado';
     default:
-      return '—';
+      return 'Pendiente';
   }
 }
 

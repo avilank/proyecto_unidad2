@@ -25,6 +25,8 @@
   --color-risk-medium: #d97706;
   --color-risk-high: #ea580c;
   --color-risk-critical: #dc2626;
+  --color-analysis-bar: #e8f3fc;
+  --color-analysis-bar-border: rgba(31, 143, 214, 0.22);
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -59,6 +61,8 @@
   --color-risk-medium: #f59e0b;
   --color-risk-high: #fb923c;
   --color-risk-critical: #ef4444;
+  --color-analysis-bar: #1a1520;
+  --color-analysis-bar-border: rgba(255, 255, 255, 0.06);
   --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.35);
   --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45);
 }

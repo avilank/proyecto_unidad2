@@ -61,7 +61,7 @@ export function AnalyticsView() {
         subtitle="Seguimiento de alertas • Efectividad del sistema • Log de envíos CSV automáticos"
       />
 
-      <div className="flex flex-1 flex-col gap-6 px-6 py-6">
+      <div className="flex flex-1 flex-col gap-4 px-6 pb-6 pt-5">
         <AnalyticsFiltersBar filters={reportFilters} onChange={setReportFilters} />
 
         <AnalyticsKpiRow summary={summary.data} isLoading={summary.isLoading} />

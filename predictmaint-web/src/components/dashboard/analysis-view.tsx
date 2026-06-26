@@ -137,7 +137,7 @@ export function AnalysisView({
         right={<Badge variant="accent">ANÁLISIS AUTOMÁTICO</Badge>}
       />
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 bg-[#2a1418] px-6 py-2.5 text-sm">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-y border-analysis-bar-border bg-analysis-bar px-6 py-2.5 text-sm">
         <span className="font-semibold text-ink">{machineId}</span>
         {sensorReading?.tipo && (
           <span className="text-ink-muted">Tipo lectura {sensorReading.tipo}</span>
@@ -646,6 +646,7 @@ function RagTab({
             maquinaId={order?.maquinaId}
             tipoFallo={tipoFallo !== '—' ? tipoFallo : order?.tipoFallo}
             onUpdated={onRegenerated}
+            showRagDecisionStatus={false}
           />
 
           {/* <Card>

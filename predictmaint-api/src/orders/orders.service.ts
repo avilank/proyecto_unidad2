@@ -8,7 +8,7 @@ import {
 import { InjectModel } from '@nestjs/sequelize';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Op } from 'sequelize';
-import { DecisionPrediccion, EstadoOrden, EstadoAlerta, RolUsuario } from '../common/enums';
+import { DecisionPrediccion, EstadoOrden, EstadoAlerta, RolUsuario, SolucionTipo } from '../common/enums';
 import { paginate, PaginationQueryDto } from '../common/dto/pagination.dto';
 import { generateOrderCodigo } from '../common/utils/id-generator.util';
 import { findMaquinaByCodigo } from '../common/utils/maquina.util';
@@ -552,6 +552,8 @@ export class OrdersService {
     const liderS2 = o.analisis?.clasificaciones?.find((c) => c.esLider);
     const idTipoFallo = liderS2?.idTipoFallo ?? liderS2?.tipoFallo?.idTipoFallo;
 
+    const isManualRejection = dto.solucionTipo === SolucionTipo.RECHAZADA_MANUAL;
+
     await SolucionAplicada.create({
       idOrden: o.idOrden,
       tipoSolucion: dto.solucionTipo,
@@ -562,10 +564,12 @@ export class OrdersService {
     await ObservacionTecnica.create({
       idOrden: o.idOrden,
       idTipoFallo,
-      esFalla: dto.esFalla ?? Boolean(liderS2?.tipoFallo),
-      esPrediccionCorrecta: dto.esPrediccionCorrecta ?? true,
-      esClasificacionCorrecta: dto.esClasificacionCorrecta ?? true,
-      decision: DecisionPrediccion.ACEPTADA,
+      esFalla: dto.esFalla ?? (isManualRejection ? false : Boolean(liderS2?.tipoFallo)),
+      esPrediccionCorrecta: dto.esPrediccionCorrecta ?? (isManualRejection ? false : true),
+      esClasificacionCorrecta: dto.esClasificacionCorrecta ?? (isManualRejection ? false : true),
+      decision: isManualRejection
+        ? DecisionPrediccion.RECHAZADA
+        : DecisionPrediccion.ACEPTADA,
       comentario: dto.comentario?.trim() || dto.descripcion,
       fechaRegistro: new Date(),
     });
