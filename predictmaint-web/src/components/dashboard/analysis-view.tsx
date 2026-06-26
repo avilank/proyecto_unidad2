@@ -646,6 +646,7 @@ function RagTab({
             maquinaId={order?.maquinaId}
             tipoFallo={tipoFallo !== '—' ? tipoFallo : order?.tipoFallo}
             onUpdated={onRegenerated}
+            showRagDecisionStatus={false}
           />
 
           {/* <Card>
