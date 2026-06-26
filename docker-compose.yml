@@ -1,65 +1,95 @@
-version: '3.8'
-
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: predictmaint
       POSTGRES_PASSWORD: predictmaint
       POSTGRES_DB: predictmaint
-    ports:
-      - '5432:5432'
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
+      - ./docker/postgres/01-restore-backup.sh:/docker-entrypoint-initdb.d/01-restore-backup.sh:ro
+      - ./seeds:/seed:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U predictmaint']
+      test: ['CMD-SHELL', 'pg_isready -U predictmaint -d predictmaint']
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  ml:
+    build:
+      context: ./predictmaint-ml
+      dockerfile: Dockerfile
+    environment:
+      API_KEY: ml-secret-key
+      MODEL_ARTIFACTS_PATH: /app/artifacts
+      DATASET_PATH: /app/ai4i2020.csv
+      OPENROUTER_API_KEY: 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
+      RAG_USE_LLM: true
+      RAG_PROVIDER: openrouter
+      RAG_MODEL: openai/gpt-4o-mini
+      RAG_TIMEOUT_SEC: 40
+      RAG_SSL_VERIFY: false
+    restart: unless-stopped
 
   api:
     build:
       context: ./predictmaint-api
       dockerfile: Dockerfile
     ports:
-      - '3001:3001'
+      - '127.0.0.1:3001:3001'
     environment:
-      DATABASE_URL: postgres://predictmaint:predictmaint@postgres:5432/predictmaint
-      DATABASE_SYNC: 'true'
-      DATABASE_SEED: 'true'
+      NODE_ENV: production
+      DATABASE_HOST: postgres
+      DATABASE_PORT: '5432'
+      DATABASE_USER: predictmaint
+      DATABASE_PASSWORD: predictmaint
+      DATABASE_NAME: predictmaint
+      DATABASE_SYNC: 'false'
+      DATABASE_ALTER: 'true'
+      DATABASE_FORCE: 'false'
+      DATABASE_LOGGING: 'false'
+      DATABASE_SEED: 'false'
       JWT_SECRET: change-me-in-production
       JWT_EXPIRES_IN: 8h
       ML_SERVICE_URL: http://ml:8000
       ML_API_KEY: ml-secret-key
-      PORT: 3001
+      WHATSAPP_TOKEN: ''
+      SMTP_HOST: ''
+      SMTP_PORT: '587'
+      SMTP_USER: ''
+      SMTP_PASS: ''
+      PORT: '3001'
+      EVALUACION_COOLDOWN_MINUTOS: '15'
+      SEND_EMAIL_WEBHOOK: https://n8n.yamboly.lat/webhook/acf0882c-1ca1-4656-99d7-6ccd5d8fbc5c
+      FRONTEND_URL: http://localhost:3000
+      DEMO_AUTOFAULT_ENABLED: 'true'
+      DEMO_AUTOFAULT_MIN: '10'
+      DEMO_AUTOFAULT_BIAS: '0.7'
+      DEMO_AUTOFAULT_MAX_ACTIVAS: '5'
     depends_on:
       postgres:
         condition: service_healthy
       ml:
         condition: service_started
-
-  ml:
-    build:
-      context: ./predictmaint-ml
-      dockerfile: Dockerfile
-    ports:
-      - '8000:8000'
-    environment:
-      API_KEY: ml-secret-key
-      MODEL_ARTIFACTS_PATH: /app/artifacts
-    volumes:
-      - ./predictmaint-ml/artifacts:/app/artifacts:ro
+    restart: unless-stopped
 
   web:
     build:
       context: ./predictmaint-web
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
     ports:
-      - '3000:3000'
+      - '127.0.0.1:3000:3000'
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+      PORT: '3000'
+      HOSTNAME: 0.0.0.0
     depends_on:
       - api
+    restart: unless-stopped
 
 volumes:
   pgdata:

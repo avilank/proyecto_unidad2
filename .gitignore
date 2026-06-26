@@ -133,6 +133,9 @@ pgdata/
 *.old
 *.orig
 *.tmp
+backup2
+seeds/backup2
+*.dump
 
 # --- Datasets grandes (descomenta si no quieres versionar CSVs pesados) ---
 # *.csv

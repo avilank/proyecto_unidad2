@@ -22,6 +22,11 @@ export function useSessionHydrated() {
       return;
     }
 
+    if (useSessionStore.getState().token) {
+      finish();
+      return;
+    }
+
     void persist.rehydrate();
     return persist.onFinishHydration(finish);
   }, []);
