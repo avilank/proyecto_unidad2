@@ -43,7 +43,7 @@ export function LoginPage() {
       const isTechnician =
         response.user.rol === RolUsuario.TECNICO ||
         response.user.rol === RolUsuario.TECNICO_SENIOR;
-      router.push(isTechnician ? '/dashboard/my-work' : '/dashboard');
+      router.replace(isTechnician ? '/dashboard/my-work' : '/dashboard');
     } catch {
       setSubmitError('Credenciales inválidas. Verifica email y contraseña.');
     }
