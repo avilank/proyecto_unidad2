@@ -1,5 +1,5 @@
 import type { AnalyticsSummary } from '@/core/entities';
-import type { AnalyticsFilters } from '@/lib/types/analytics-filters';
+import type { AnalyticsFilters, DashboardFilters } from '@/lib/types/analytics-filters';
 import type {
   DashboardApiResponse,
   FaultByType,
@@ -11,8 +11,8 @@ import type {
 import { analyticsRepository } from '@/infrastructure/repositories/analytics.repository';
 
 export class AnalyticsService {
-  getDashboard(): Promise<DashboardApiResponse> {
-    return analyticsRepository.getDashboardKpis();
+  getDashboard(filters: DashboardFilters = {}): Promise<DashboardApiResponse> {
+    return analyticsRepository.getDashboardKpis(filters);
   }
 
   getSummary(filters: AnalyticsFilters = { range: 'week' }): Promise<AnalyticsSummary> {

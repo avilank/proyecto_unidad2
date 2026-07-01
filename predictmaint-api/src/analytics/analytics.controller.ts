@@ -11,8 +11,8 @@ export class AnalyticsController {
 
   @Get('dashboard')
   @ApiOperation({ summary: 'KPIs del dashboard' })
-  getDashboard() {
-    return this.analyticsService.getDashboard();
+  getDashboard(@Query() query: Record<string, string>) {
+    return this.analyticsService.getDashboard(parseAnalyticsFilters(query));
   }
 
   @Get('summary')

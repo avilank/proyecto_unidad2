@@ -15,7 +15,7 @@ import type {
   Technician,
   User,
 } from '@/core/entities';
-import type { AnalyticsFilters } from '@/lib/types/analytics-filters';
+import type { AnalyticsFilters, DashboardFilters } from '@/lib/types/analytics-filters';
 import type {
   DashboardApiResponse,
   FaultByType,
@@ -87,7 +87,7 @@ export interface ITechnicianRepository {
 }
 
 export interface IAnalyticsRepository {
-  getDashboardKpis(): Promise<DashboardApiResponse>;
+  getDashboardKpis(filters?: DashboardFilters): Promise<DashboardApiResponse>;
   getSummary(filters?: AnalyticsFilters): Promise<AnalyticsSummary>;
   getRepetitiveFaults(): Promise<RecurrentMachineFault[]>;
   getMachineRecurrence(

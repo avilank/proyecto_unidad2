@@ -52,7 +52,7 @@ type SettingsTab = 'ml' | 'messages' | 'rag' | 'alerts' | 'recurrent';
 
 const TABS: { id: SettingsTab; label: string; ready: boolean }[] = [
   { id: 'ml', label: 'Modelos ML', ready: true },
-  { id: 'messages', label: 'Envío de Mensajes', ready: true },
+  // { id: 'messages', label: 'Envío de Mensajes', ready: true },
   { id: 'rag', label: 'RAG', ready: true },
   { id: 'alerts', label: 'Alertas', ready: true },
   { id: 'recurrent', label: 'Fallos Repetitivos', ready: true },

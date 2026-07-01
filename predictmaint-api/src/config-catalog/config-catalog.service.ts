@@ -10,6 +10,9 @@ import {
   parseDispatchSchedule,
   type DispatchScheduleItem,
 } from './dispatch-schedule.defaults';
+import {
+  formatRagSourceFaultLabel,
+} from '../common/utils/rag-source-fault.util';
 
 /** SLA por nivel en minutos (null = no aplica). */
 export type TiemposAtencion = {
@@ -307,7 +310,7 @@ export class ConfigCatalogService {
     return rows.map((f) => ({
       id: f.idFuente,
       fuente: f.titulo,
-      tipoFallo: null,
+      tipoFallo: formatRagSourceFaultLabel(f.titulo),
       descripcion: RAG_SOURCE_DESCRIPTIONS[f.titulo] ?? f.autor ?? null,
       activa: f.activo,
     }));
@@ -320,7 +323,7 @@ export class ConfigCatalogService {
     return {
       id: f.idFuente,
       fuente: f.titulo,
-      tipoFallo: null,
+      tipoFallo: formatRagSourceFaultLabel(f.titulo),
       descripcion: RAG_SOURCE_DESCRIPTIONS[f.titulo] ?? f.autor ?? null,
       activa: f.activo,
     };

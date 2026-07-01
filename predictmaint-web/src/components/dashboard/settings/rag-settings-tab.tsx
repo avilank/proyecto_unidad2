@@ -4,15 +4,6 @@ import type { RagSource } from '@/core/entities';
 import { cn } from '@/lib/utils/cn';
 import { SettingsAccentPanel, SettingsToggle } from './settings-controls';
 
-const SOURCE_TYPES: Record<string, string> = {
-  'Theissler et al. (2021)': 'HDF, PWF',
-  'Pashmforoush et al. (2025)': 'TWF, OSF',
-  'Cai et al. (2023)': 'Todos',
-  'Araujo et al. (2025)': 'PWF, OSF',
-  'Hesser & Markert (2019)': 'TWF',
-  'Jakobs et al. (2026)': 'RNF',
-};
-
 const MAP_ITEMS = [
   {
     code: 'HDF',
@@ -98,7 +89,7 @@ export function RagSettingsTab({
                     </p>
                   </div>
                   <p className="self-center text-xs font-semibold text-violet-300">
-                    {SOURCE_TYPES[source.fuente] ?? source.tipoFallo ?? 'Todos'}
+                    {source.tipoFallo ?? 'Todos'}
                   </p>
                   <div className="flex justify-end">
                     <SettingsToggle

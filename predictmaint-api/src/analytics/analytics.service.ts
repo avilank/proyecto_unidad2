@@ -152,13 +152,40 @@ export class AnalyticsService {
     return this.applyAnalyticsFilters(rows, filters);
   }
 
-  async getDashboard() {
-    const startDay = this.startOfDay();
-    const totalMaquinas = await this.maquinaModel.count();
+  async getDashboard(filters: ParsedAnalyticsFilters = { range: 'week' }) {
+    const { from, to } =
+      filters.desde || filters.hasta
+        ? resolveDateRange(filters)
+        : { from: this.startOfDay(), to: new Date() };
 
-    // Un "evento S-1" = pipeline iniciado hoy (regla disparada + evaluación ML).
+    const maquinaWhere: Record<string, unknown> = {};
+    if (filters.tipoMaquina) {
+      maquinaWhere.tipoCalidad = filters.tipoMaquina;
+    }
+
+    const maquinasFiltradas = filters.tipoMaquina
+      ? await this.maquinaModel.findAll({
+          where: maquinaWhere,
+          attributes: ['idMaquina'],
+        })
+      : [];
+    const maquinaIds = maquinasFiltradas.map((m) => m.idMaquina);
+
+    const totalMaquinas = filters.tipoMaquina
+      ? maquinaIds.length
+      : await this.maquinaModel.count();
+
+    const ordenDateWhere: Record<string, unknown> = {
+      fechaCreacion: { [Op.gte]: from, [Op.lte]: to },
+    };
+    if (filters.tipoMaquina) {
+      ordenDateWhere.idMaquina =
+        maquinaIds.length > 0 ? { [Op.in]: maquinaIds } : -1;
+    }
+
+    // Un "evento S-1" = pipeline iniciado en el rango (regla disparada + evaluación ML).
     const ordenesHoy = await this.ordenModel.findAll({
-      where: { fechaCreacion: { [Op.gte]: startDay } },
+      where: ordenDateWhere,
       attributes: ['idMaquina', 'estado'],
       include: [
         {
@@ -183,7 +210,7 @@ export class AnalyticsService {
     let moderadosHoy = 0;
 
     const ordenesConFalla = await this.ordenModel.findAll({
-      where: { fechaCreacion: { [Op.gte]: startDay } },
+      where: ordenDateWhere,
       include: [
         {
           model: AnalisisFallo,
@@ -224,8 +251,16 @@ export class AnalyticsService {
     );
     const sinIncidenciaHoy = Math.max(0, pipelinesHoy - fallasDetectadasHoy);
 
+    const alertaWhere: Record<string, unknown> = {
+      estado: { [Op.notIn]: ['finalizado'] },
+    };
+    if (filters.tipoMaquina) {
+      alertaWhere.idMaquina =
+        maquinaIds.length > 0 ? { [Op.in]: maquinaIds } : -1;
+    }
+
     const alertasActivas = await this.alertaModel.findAll({
-      where: { estado: { [Op.notIn]: ['finalizado'] } },
+      where: alertaWhere,
       attributes: ['nivelRiesgo', 'idMaquina'],
     });
     const alertasCriticas = alertasActivas.filter((a) => a.nivelRiesgo === 'CRITICAL').length;

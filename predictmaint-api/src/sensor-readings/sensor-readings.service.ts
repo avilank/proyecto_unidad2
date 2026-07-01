@@ -25,6 +25,10 @@ import { findMaquinaByCodigo } from '../common/utils/maquina.util';
 import { resolveTipoFalloByMinAgreement } from '../common/utils/classify-fault.util';
 import { resolveModeloId } from '../common/utils/modelo-ml.util';
 import { buildGeneralRecommendation } from '../common/utils/rag-recommendation.util';
+import {
+  formatRagSourceFaultLabel,
+  ragSourceAppliesToFault,
+} from '../common/utils/rag-source-fault.util';
 import { tecnicoNombre } from '../common/utils/tecnico-display.util';
 import {
   COOLDOWN_EVALUACION_MINUTOS_DEFAULT,
@@ -206,7 +210,7 @@ export class SensorReadingsService {
     tipoFallo: string,
     maquinaCodigo: string,
   ): Promise<void> {
-    const fuentes = await this.getActiveRagSources();
+    const fuentes = await this.getActiveRagSources(tipoFallo);
     const ragResult = await this.mlGateway.rag({
       tipoFallo,
       maquinaId: maquinaCodigo,
@@ -247,19 +251,22 @@ export class SensorReadingsService {
     return Array.from(new Set(ids));
   }
 
-  private async getActiveRagSources(): Promise<MlRagSource[]> {
+  private async getActiveRagSources(tipoFallo: string): Promise<MlRagSource[]> {
     const rows = await this.fuenteRagModel.findAll({
       where: { activo: true },
       order: [['idFuente', 'ASC']],
     });
 
-    return rows.map((f) => ({
-      id: f.idFuente,
-      titulo: f.titulo,
-      autor: f.autor ?? null,
-      url: f.url ?? null,
-      descripcion: f.autor ?? null,
-    }));
+    return rows
+      .filter((f) => ragSourceAppliesToFault(f.titulo, tipoFallo))
+      .map((f) => ({
+        id: f.idFuente,
+        titulo: f.titulo,
+        autor: f.autor ?? null,
+        url: f.url ?? null,
+        descripcion: f.autor ?? null,
+        tipoFallo: formatRagSourceFaultLabel(f.titulo),
+      }));
   }
 
   private async scheduleAssignmentRetry(
