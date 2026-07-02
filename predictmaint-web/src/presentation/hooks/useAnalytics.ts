@@ -2,10 +2,13 @@
 
 import useSWR from 'swr';
 import { analyticsService } from '@/application/services/analytics.service';
-import type { AnalyticsFilters } from '@/lib/types/analytics-filters';
+import type { AnalyticsFilters, DashboardFilters } from '@/lib/types/analytics-filters';
 
-export function useDashboard(options?: { poll?: boolean }) {
-  return useSWR('/analytics/dashboard', () => analyticsService.getDashboard(), {
+export function useDashboard(
+  filters: DashboardFilters = {},
+  options?: { poll?: boolean },
+) {
+  return useSWR(['/analytics/dashboard', filters], () => analyticsService.getDashboard(filters), {
     refreshInterval: options?.poll === false ? 0 : 5000,
   });
 }

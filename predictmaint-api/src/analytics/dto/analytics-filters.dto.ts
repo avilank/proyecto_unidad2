@@ -8,6 +8,7 @@ export type ParsedAnalyticsFilters = {
   respuestaRag?: 'aceptado' | 'rechazado' | 'pendiente';
   decision?: 'aceptada' | 'rechazada';
   estado?: string;
+  tipoMaquina?: string;
 };
 
 export function parseAnalyticsFilters(
@@ -18,6 +19,7 @@ export function parseAnalyticsFilters(
   const estado = query.estado?.trim();
   const tipoFallo = query.tipoFallo?.trim();
   const maquinaId = query.maquinaId?.trim();
+  const tipoMaquina = query.tipoMaquina?.trim();
 
   return {
     range: query.range?.trim() || 'week',
@@ -35,6 +37,10 @@ export function parseAnalyticsFilters(
         ? (decision as ParsedAnalyticsFilters['decision'])
         : undefined,
     estado: estado && estado !== 'todos' ? estado : undefined,
+    tipoMaquina:
+      tipoMaquina && ['H', 'M', 'L'].includes(tipoMaquina.toUpperCase())
+        ? tipoMaquina.toUpperCase()
+        : undefined,
   };
 }
 

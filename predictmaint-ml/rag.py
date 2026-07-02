@@ -257,41 +257,69 @@ def _source_title(source: dict[str, Any]) -> str:
     return str(source.get("titulo") or source.get("fuente") or "").strip()
 
 
-def _normalize_sources(fuentes: list[dict[str, Any]] | None) -> list[dict[str, str]]:
-    if not fuentes:
-        return DEFAULT_RAG_SOURCES
+def _source_fault_codes(source: dict[str, Any]) -> list[str]:
+    raw = source.get("tipoFallo") or source.get("tipo_fallo") or ""
+    if not raw:
+        return []
+    tokens = [token.strip().upper() for token in str(raw).replace("/", ",").split(",") if token.strip()]
+    if "TODOS" in tokens or "ALL" in tokens:
+        return ["HDF", "PWF", "TWF", "OSF"]
+    return tokens
 
-    normalized: list[dict[str, str]] = []
-    for source in fuentes:
-        title = _source_title(source)
-        if not title:
-            continue
-        fallback = next((item for item in DEFAULT_RAG_SOURCES if item["titulo"] == title), {})
-        normalized.append(
-            {
-                "titulo": title,
-                "autor": str(source.get("autor") or source.get("descripcion") or fallback.get("autor", "")),
-                "descripcion": str(source.get("descripcion") or fallback.get("descripcion", "")),
-                "url": str(source.get("url") or fallback.get("url", "")),
-            }
-        )
-    return normalized or DEFAULT_RAG_SOURCES
+
+def _source_applies_to_fault(source: dict[str, Any], fault: str) -> bool:
+    fault_code = fault.strip().upper()
+    if not fault_code:
+        return True
+
+    explicit_codes = _source_fault_codes(source)
+    if explicit_codes:
+        return fault_code in explicit_codes
+
+    title = _source_title(source)
+    preferred = FAULT_SOURCES.get(fault_code, [])
+    if preferred:
+        return title in preferred
+
+    return True
+
+
+def _normalize_sources(fuentes: list[dict[str, Any]] | None) -> list[dict[str, str]]:
+    if fuentes is not None:
+        if not fuentes:
+            return []
+
+        normalized: list[dict[str, str]] = []
+        for source in fuentes:
+            title = _source_title(source)
+            if not title:
+                continue
+            fallback = next((item for item in DEFAULT_RAG_SOURCES if item["titulo"] == title), {})
+            normalized.append(
+                {
+                    "titulo": title,
+                    "autor": str(source.get("autor") or source.get("descripcion") or fallback.get("autor", "")),
+                    "descripcion": str(source.get("descripcion") or fallback.get("descripcion", "")),
+                    "url": str(source.get("url") or fallback.get("url", "")),
+                    "tipoFallo": str(source.get("tipoFallo") or source.get("tipo_fallo") or ""),
+                }
+            )
+        return normalized
+
+    return DEFAULT_RAG_SOURCES
 
 
 def _select_sources(fault: str, fuentes: list[dict[str, Any]] | None) -> list[dict[str, str]]:
     available = _normalize_sources(fuentes)
+    matched = [item for item in available if _source_applies_to_fault(item, fault)]
+    if not matched:
+        return []
+
     preferred = FAULT_SOURCES.get(fault, [])
-    by_title = {item["titulo"]: item for item in available}
-    selected = [by_title[title] for title in preferred if title in by_title]
-
-    if len(selected) < 3:
-        for item in available:
-            if item["titulo"] not in {source["titulo"] for source in selected}:
-                selected.append(item)
-            if len(selected) >= 3:
-                break
-
-    return selected[:3] or available[:3]
+    by_title = {item["titulo"]: item for item in matched}
+    ordered = [by_title[title] for title in preferred if title in by_title]
+    extras = [item for item in matched if item["titulo"] not in {source["titulo"] for source in ordered}]
+    return ordered + extras
 
 
 def _fallback_sources(fault: str, fuentes: list[dict[str, Any]] | None = None) -> list[str]:

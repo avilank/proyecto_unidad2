@@ -78,6 +78,7 @@ export interface MlRagSource {
   autor?: string | null;
   url?: string | null;
   descripcion?: string | null;
+  tipoFallo?: string | null;
 }
 
 export interface MlRagResponse {

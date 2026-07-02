@@ -2,6 +2,10 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op } from 'sequelize';
 import { buildGeneralRecommendation } from '../common/utils/rag-recommendation.util';
+import {
+  formatRagSourceFaultLabel,
+  ragSourceAppliesToFault,
+} from '../common/utils/rag-source-fault.util';
 import { Alerta } from '../database/models/alerta.model';
 import { AnalisisFallo } from '../database/models/analisis-fallo.model';
 import { ClasificacionFallo } from '../database/models/clasificacion-fallo.model';
@@ -94,23 +98,50 @@ export class RagService {
     return this.toPlanResponse(orderCodigo);
   }
 
-  private async getRagSources(fuenteIds?: number[]): Promise<MlRagSource[]> {
-    const where =
-      fuenteIds && fuenteIds.length > 0
-        ? { idFuente: { [Op.in]: fuenteIds } }
-        : { activo: true };
+  private async getRagSourcesForFault(
+    tipoFallo: string,
+    fuenteIds?: number[],
+  ): Promise<MlRagSource[]> {
+    if (fuenteIds && fuenteIds.length > 0) {
+      return this.getRagSourcesByIds(fuenteIds, tipoFallo);
+    }
+
     const rows = await this.fuenteModel.findAll({
-      where,
+      where: { activo: true },
       order: [['idFuente', 'ASC']],
     });
 
-    return rows.map((f) => ({
-      id: f.idFuente,
-      titulo: f.titulo,
-      autor: f.autor ?? null,
-      url: f.url ?? null,
-      descripcion: f.autor ?? null,
-    }));
+    return rows
+      .filter((f) => ragSourceAppliesToFault(f.titulo, tipoFallo))
+      .map((f) => ({
+        id: f.idFuente,
+        titulo: f.titulo,
+        autor: f.autor ?? null,
+        url: f.url ?? null,
+        descripcion: f.autor ?? null,
+        tipoFallo: formatRagSourceFaultLabel(f.titulo),
+      }));
+  }
+
+  private async getRagSourcesByIds(
+    fuenteIds: number[],
+    tipoFallo: string,
+  ): Promise<MlRagSource[]> {
+    const rows = await this.fuenteModel.findAll({
+      where: { idFuente: { [Op.in]: fuenteIds }, activo: true },
+      order: [['idFuente', 'ASC']],
+    });
+
+    return rows
+      .filter((f) => ragSourceAppliesToFault(f.titulo, tipoFallo))
+      .map((f) => ({
+        id: f.idFuente,
+        titulo: f.titulo,
+        autor: f.autor ?? null,
+        url: f.url ?? null,
+        descripcion: f.autor ?? null,
+        tipoFallo: formatRagSourceFaultLabel(f.titulo),
+      }));
   }
 
   async accept(orderCodigo: string) {
@@ -151,9 +182,10 @@ export class RagService {
   async regenerate(orderCodigo: string, escalado = false, fuenteIds?: number[]) {
     const { orden, lider } = await this.getLiderClasificacion(orderCodigo);
     const maquinaCodigo = orden.maquina?.codigo ?? '';
-    const fuentes = await this.getRagSources(fuenteIds);
+    const tipoFallo = lider.tipoFallo?.codigo ?? 'RNF';
+    const fuentes = await this.getRagSourcesForFault(tipoFallo, fuenteIds);
     const ragResult = await this.mlGateway.rag({
-      tipoFallo: lider.tipoFallo?.codigo ?? 'RNF',
+      tipoFallo,
       maquinaId: maquinaCodigo,
       historial: [],
       escalado,

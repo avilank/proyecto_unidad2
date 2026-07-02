@@ -92,7 +92,7 @@ export function MonitoringView() {
   const stream = useMonitoringStream();
   const machines = useMachines({ poll: false });
   const alerts = useActiveAlerts({ poll: false });
-  const dashboard = useDashboard({ poll: false });
+  const dashboard = useDashboard({}, { poll: false });
   const recurrent = useRecurrentFaults();
   const dispatch = useNextDispatch();
   const [clock, setClock] = useState('');

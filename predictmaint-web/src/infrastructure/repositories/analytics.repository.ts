@@ -14,15 +14,17 @@ import type {
 } from '@/core/types/api';
 import type { IAnalyticsRepository } from '@/core/interfaces';
 import { apiClient } from '@/infrastructure/http/clients/apiClient';
-import type { AnalyticsFilters } from '@/lib/types/analytics-filters';
-import { analyticsFiltersToParams } from '@/lib/types/analytics-filters';
+import type { AnalyticsFilters, DashboardFilters } from '@/lib/types/analytics-filters';
+import { analyticsFiltersToParams, dashboardFiltersToParams } from '@/lib/types/analytics-filters';
 import { FAULT_TYPE_ORDER } from '@/lib/constants/fault-types';
 
 type FaultByTypeApi = { tipoFallo?: string; tipo?: string; count?: number; total?: number };
 
 export class AnalyticsRepository implements IAnalyticsRepository {
-  getDashboardKpis(): Promise<DashboardApiResponse> {
-    return apiClient.get<DashboardApiResponse>('/analytics/dashboard');
+  getDashboardKpis(filters: DashboardFilters = {}): Promise<DashboardApiResponse> {
+    return apiClient.get<DashboardApiResponse>('/analytics/dashboard', {
+      params: dashboardFiltersToParams(filters),
+    });
   }
 
   getSummary(filters: AnalyticsFilters = { range: 'week' }): Promise<AnalyticsSummary> {

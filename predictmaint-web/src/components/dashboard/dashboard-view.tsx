@@ -21,6 +21,8 @@ import { useActiveAlerts, useRecentAlerts } from '@/presentation/hooks/useAlerts
 import { useMachines } from '@/presentation/hooks/useMachines';
 import { FAULT_LABELS, FAULT_TYPE_ORDER } from '@/lib/constants/fault-types';
 import { EstadoAlerta } from '@/core/types';
+import type { DashboardFilters } from '@/lib/types/analytics-filters';
+import { DEFAULT_DASHBOARD_FILTERS } from '@/lib/types/analytics-filters';
 import {
   buildFallosPorTipoHoy,
   calcTasaFalloGlobal,
@@ -65,8 +67,18 @@ const DEFAULT_ALERT_FILTERS: RecentAlertFilters = {
   estado: '',
 };
 
+const MACHINE_TYPE_OPTIONS = [
+  { value: '', label: 'Todos los tipos' },
+  { value: 'H', label: 'Tipo H' },
+  { value: 'M', label: 'Tipo M' },
+  { value: 'L', label: 'Tipo L' },
+];
+
 export function DashboardView() {
-  const dashboard = useDashboard();
+  const [dashboardFilters, setDashboardFilters] = useState<DashboardFilters>(
+    DEFAULT_DASHBOARD_FILTERS,
+  );
+  const dashboard = useDashboard(dashboardFilters);
   const [sensorVariable, setSensorVariable] = useState('rotationalSpeed');
   const [sensorMaquinaId, setSensorMaquinaId] = useState('');
   const trend = useSensorTrend(sensorVariable, 24, sensorMaquinaId || undefined);
@@ -76,8 +88,19 @@ export function DashboardView() {
   const [alertFilters, setAlertFilters] = useState<RecentAlertFilters>(DEFAULT_ALERT_FILTERS);
 
   const d = dashboard.data;
-  const machineList = machines.data ?? [];
-  const alertList = activeAlerts.data ?? [];
+  const machineList = useMemo(() => {
+    const rows = machines.data ?? [];
+    if (!dashboardFilters.tipoMaquina) return rows;
+    return rows.filter((m) => m.tipo === dashboardFilters.tipoMaquina);
+  }, [machines.data, dashboardFilters.tipoMaquina]);
+
+  const machineIdSet = useMemo(() => new Set(machineList.map((m) => m.id)), [machineList]);
+
+  const alertList = useMemo(() => {
+    const rows = activeAlerts.data ?? [];
+    if (!dashboardFilters.tipoMaquina) return rows;
+    return rows.filter((a) => machineIdSet.has(a.maquinaId));
+  }, [activeAlerts.data, dashboardFilters.tipoMaquina, machineIdSet]);
 
   const fallosHoy = useMemo(() => buildFallosPorTipoHoy(d?.fallosPorTipoHoy), [d?.fallosPorTipoHoy]);
 
@@ -90,27 +113,98 @@ export function DashboardView() {
 
   const filteredAlerts = useMemo(() => {
     const rows = alerts.data ?? [];
+    const fromMs = dashboardFilters.desde
+      ? new Date(`${dashboardFilters.desde}T00:00:00`).getTime()
+      : null;
+    const toMs = dashboardFilters.hasta
+      ? new Date(`${dashboardFilters.hasta}T23:59:59.999`).getTime()
+      : null;
+
     return rows.filter((row) => {
+      if (dashboardFilters.tipoMaquina && !machineIdSet.has(row.maquinaId)) return false;
+      if (fromMs != null || toMs != null) {
+        const ts = new Date(row.creadoEn).getTime();
+        if (fromMs != null && ts < fromMs) return false;
+        if (toMs != null && ts > toMs) return false;
+      }
       if (alertFilters.tipoFallo && row.tipoFallo !== alertFilters.tipoFallo) return false;
       if (alertFilters.maquinaId && row.maquinaId !== alertFilters.maquinaId) return false;
       if (alertFilters.algoritmo && row.modeloPrediccion !== alertFilters.algoritmo) return false;
       if (alertFilters.estado && row.estado !== alertFilters.estado) return false;
       return true;
     });
-  }, [alerts.data, alertFilters]);
+  }, [alerts.data, alertFilters, dashboardFilters, machineIdSet]);
+
+  const hasActiveDashboardFilters = Boolean(
+    dashboardFilters.desde || dashboardFilters.hasta || dashboardFilters.tipoMaquina,
+  );
+  const clearDashboardFilters = () => setDashboardFilters(DEFAULT_DASHBOARD_FILTERS);
+
+  const patchDashboardFilters = (partial: Partial<DashboardFilters>) =>
+    setDashboardFilters((prev) => ({ ...prev, ...partial }));
+
+  const hasActiveAlertFilters = Object.values(alertFilters).some(Boolean);
+  const clearAlertFilters = () => setAlertFilters(DEFAULT_ALERT_FILTERS);
 
   const patchAlertFilters = (partial: Partial<RecentAlertFilters>) =>
     setAlertFilters((prev) => ({ ...prev, ...partial }));
 
-  const hasActiveAlertFilters = Object.values(alertFilters).some(Boolean);
-  const clearAlertFilters = () => setAlertFilters(DEFAULT_ALERT_FILTERS);
+  const compactDateClass =
+    'relative min-w-[130px] rounded-md border border-border-soft bg-surface-2 px-3 py-1.5 pr-8 text-xs text-ink [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0';
 
   return (
     <div className="flex min-h-full flex-col">
       <Topbar
         flush
+        className="items-center"
         title="Dashboard General"
         subtitle={`${formatDashboardDate()} | ${getCurrentTurn()}`}
+        right={
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <input
+              type="date"
+              className={compactDateClass}
+              value={dashboardFilters.desde ?? ''}
+              onChange={(e) =>
+                patchDashboardFilters({ desde: e.target.value || undefined })
+              }
+              aria-label="Desde"
+            />
+            <span className="text-xs text-ink-muted">—</span>
+            <input
+              type="date"
+              className={compactDateClass}
+              value={dashboardFilters.hasta ?? ''}
+              onChange={(e) =>
+                patchDashboardFilters({ hasta: e.target.value || undefined })
+              }
+              aria-label="Hasta"
+            />
+            <select
+              className={compactSelectClass}
+              value={dashboardFilters.tipoMaquina ?? ''}
+              onChange={(e) =>
+                patchDashboardFilters({ tipoMaquina: e.target.value || undefined })
+              }
+              aria-label="Tipo de máquina"
+            >
+              {MACHINE_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value || 'all'} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-[30px] px-3 text-xs"
+              onClick={clearDashboardFilters}
+              disabled={!hasActiveDashboardFilters}
+            >
+              Limpiar
+            </Button>
+          </div>
+        }
         badge={
           d?.alertasActivas
             ? { label: `${d.alertasActivas} Alertas activas`, variant: 'danger' }

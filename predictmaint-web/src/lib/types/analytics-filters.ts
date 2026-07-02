@@ -1,3 +1,21 @@
+export type DashboardFilters = {
+  desde?: string;
+  hasta?: string;
+  tipoMaquina?: string;
+};
+
+export const DEFAULT_DASHBOARD_FILTERS: DashboardFilters = {};
+
+export function dashboardFiltersToParams(
+  filters: DashboardFilters,
+): Record<string, string> {
+  const params: Record<string, string> = {};
+  if (filters.desde) params.desde = filters.desde;
+  if (filters.hasta) params.hasta = filters.hasta;
+  if (filters.tipoMaquina) params.tipoMaquina = filters.tipoMaquina;
+  return params;
+}
+
 export type ReportFilters = {
   range: 'week' | 'month';
   desde?: string;
