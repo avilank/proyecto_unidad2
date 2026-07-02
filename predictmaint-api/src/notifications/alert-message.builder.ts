@@ -26,6 +26,17 @@ export interface AlertMessageInput {
   tiempoLimiteInicioMin?: number | null;
   /** Umbral configurado para mostrar el aviso de fallo repetitivo. */
   umbralRepetitivo?: number;
+  /** Acción escalada configurada (Config → Fallos repetitivos); solo si es repetitivo. */
+  accionEscaladaConfig?: string | null;
+}
+
+function isRepetitivoFault(input: AlertMessageInput): boolean {
+  const umbral = input.umbralRepetitivo ?? UMBRAL_REPETITIVO;
+  return (
+    input.ocurrenciasVentana != null &&
+    input.ocurrenciasVentana >= umbral &&
+    Boolean(input.ventanaDias)
+  );
 }
 
 interface FaultMetric {
@@ -196,16 +207,13 @@ export function buildAlertMessageInput(params: {
 export function buildWhatsappSummary(input: AlertMessageInput): string {
   const lines: string[] = [];
   const emoji = riskEmoji(String(input.nivelRiesgo));
+  const esRepetitivo = isRepetitivoFault(input);
 
   lines.push(`${emoji} *ALERTA — ${input.maquinaCodigo}*`);
 
-  const umbralRep = input.umbralRepetitivo ?? UMBRAL_REPETITIVO;
-  if (
-    input.ocurrenciasVentana != null &&
-    input.ocurrenciasVentana >= umbralRep &&
-    input.ventanaDias
-  ) {
-    const ordinal = input.ocurrenciasVentana === 3 ? '3er' : `${input.ocurrenciasVentana}º`;
+  if (esRepetitivo) {
+    const ocurrencias = input.ocurrenciasVentana!;
+    const ordinal = ocurrencias === 3 ? '3er' : `${ocurrencias}º`;
     lines.push(
       `🟠 *FALLO REPETITIVO — ${ordinal} ${input.tipoFalloCodigo} en ${input.ventanaDias} días*`,
     );
@@ -234,7 +242,7 @@ export function buildWhatsappSummary(input: AlertMessageInput): string {
     lines.push(`⏱️ *Iniciar antes de:* ${input.tiempoLimiteInicioMin} min`);
   }
 
-  if (input.intervencionesAnteriores?.length) {
+  if (esRepetitivo && input.intervencionesAnteriores?.length) {
     lines.push('');
     lines.push(`*Intervenciones anteriores (${input.tipoFalloCodigo}):*`);
     for (const item of input.intervencionesAnteriores.slice(0, 5)) {
@@ -242,11 +250,21 @@ export function buildWhatsappSummary(input: AlertMessageInput): string {
     }
   }
 
+  if (esRepetitivo && input.accionEscaladaConfig?.trim()) {
+    lines.push('');
+    lines.push(`⚠️ *ACCIÓN ESCALADA — ${input.tipoFalloCodigo}*`);
+    lines.push(input.accionEscaladaConfig.trim());
+  }
+
   lines.push('');
-  lines.push('Ver plan escalado y responder:');
+  lines.push(
+    esRepetitivo && input.accionEscaladaConfig?.trim()
+      ? 'Ver plan escalado y responder:'
+      : 'Ver orden en el panel:',
+  );
   lines.push(input.enlaceAnalisis);
 
-  if (input.planEscalado) {
+  if (esRepetitivo && input.planEscalado && !input.accionEscaladaConfig?.trim()) {
     lines.push('');
     lines.push(`📘 ${input.planEscalado}`);
   }
@@ -268,10 +286,19 @@ export function buildEmailHtml(input: AlertMessageInput): string {
     .map((item) => `<li>${formatInterventionLine(item)}</li>`)
     .join('');
 
-  const repetitivo =
-    input.ocurrenciasVentana != null &&
-    input.ocurrenciasVentana >= (input.umbralRepetitivo ?? UMBRAL_REPETITIVO)
-      ? `<p style="color:#ea580c;font-weight:600">Fallo repetitivo: ${input.ocurrenciasVentana} ocurrencias de ${input.tipoFalloCodigo} en ${input.ventanaDias} días</p>`
+  const esRepetitivo = isRepetitivoFault(input);
+  const repetitivo = esRepetitivo
+    ? `<p style="color:#ea580c;font-weight:600">Fallo repetitivo: ${input.ocurrenciasVentana} ocurrencias de ${input.tipoFalloCodigo} en ${input.ventanaDias} días</p>`
+    : '';
+
+  const accionEscalada =
+    esRepetitivo && input.accionEscaladaConfig?.trim()
+      ? `<p style="background:#fff7ed;padding:12px;border-left:4px solid #ea580c;border-radius:4px;color:#9a3412"><strong>⚠️ Acción escalada (${input.tipoFalloCodigo}):</strong> ${input.accionEscaladaConfig.trim()}</p>`
+      : '';
+
+  const planEscalado =
+    esRepetitivo && input.planEscalado && !input.accionEscaladaConfig?.trim()
+      ? `<p style="background:#eff6ff;padding:12px;border-radius:8px;color:#1d4ed8"><strong>${input.planEscalado}</strong></p>`
       : '';
 
   return `
@@ -283,9 +310,10 @@ export function buildEmailHtml(input: AlertMessageInput): string {
       ${metricRows ? `<ul>${metricRows}</ul>` : ''}
       <p><strong>Orden:</strong> ${input.ordenCodigo}</p>
       ${input.tiempoLimiteInicioMin != null ? `<p><strong>⏱️ Iniciar antes de:</strong> ${input.tiempoLimiteInicioMin} min</p>` : ''}
-      ${historial ? `<p><strong>Intervenciones anteriores (${input.tipoFalloCodigo}):</strong></p><ul>${historial}</ul>` : ''}
+      ${esRepetitivo && historial ? `<p><strong>Intervenciones anteriores (${input.tipoFalloCodigo}):</strong></p><ul>${historial}</ul>` : ''}
+      ${accionEscalada}
       <p><a href="${input.enlaceAnalisis}" style="color:#2563eb">Ver plan y responder en el panel</a></p>
-      ${input.planEscalado ? `<p style="background:#eff6ff;padding:12px;border-radius:8px;color:#1d4ed8"><strong>${input.planEscalado}</strong></p>` : ''}
+      ${planEscalado}
     </div>
   `.trim();
 }

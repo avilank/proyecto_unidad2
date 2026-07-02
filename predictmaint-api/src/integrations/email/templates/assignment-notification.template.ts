@@ -67,22 +67,31 @@ export function buildAssignmentEmailSubject(input: AssignmentEmailInput): string
 
 export function buildAssignmentEmailHtml(input: AssignmentEmailInput): string {
   const risk = riskStyle(String(input.nivelRiesgo));
-  const repetitivo =
+  const umbralRep = input.umbralRepetitivo ?? 3;
+  const esRepetitivo =
     input.ocurrenciasVentana != null &&
-    input.ocurrenciasVentana >= 3 &&
-    input.ventanaDias
-      ? `<p style="margin:0 0 16px;padding:12px 14px;background:#fff7ed;border-left:4px solid #ea580c;color:#9a3412;font-size:13px;border-radius:4px">
+    input.ocurrenciasVentana >= umbralRep &&
+    Boolean(input.ventanaDias);
+
+  const repetitivo = esRepetitivo
+    ? `<p style="margin:0 0 16px;padding:12px 14px;background:#fff7ed;border-left:4px solid #ea580c;color:#9a3412;font-size:13px;border-radius:4px">
           <strong>Fallo repetitivo:</strong> ${input.ocurrenciasVentana} ocurrencias de ${input.tipoFalloCodigo} en los últimos ${input.ventanaDias} días.
         </p>`
-      : '';
+    : '';
 
   const accion = input.accionPrincipal
     ? `<p style="margin:0 0 8px;font-size:14px;color:#334155"><strong>Acción recomendada:</strong> ${input.accionPrincipal}</p>`
     : '';
 
-  const plan = input.planEscalado
-    ? `<p style="margin:16px 0 0;padding:12px 14px;background:#eff6ff;border-radius:8px;color:#1d4ed8;font-size:13px">${input.planEscalado}</p>`
-    : '';
+  const accionEscalada =
+    esRepetitivo && input.accionEscaladaConfig?.trim()
+      ? `<p style="margin:16px 0 0;padding:12px 14px;background:#fff7ed;border-left:4px solid #ea580c;border-radius:4px;color:#9a3412;font-size:13px"><strong>⚠️ Acción escalada (${input.tipoFalloCodigo}):</strong> ${input.accionEscaladaConfig.trim()}</p>`
+      : '';
+
+  const plan =
+    esRepetitivo && input.planEscalado && !input.accionEscaladaConfig?.trim()
+      ? `<p style="margin:16px 0 0;padding:12px 14px;background:#eff6ff;border-radius:8px;color:#1d4ed8;font-size:13px">${input.planEscalado}</p>`
+      : '';
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -149,6 +158,8 @@ export function buildAssignmentEmailHtml(input: AssignmentEmailInput): string {
 
               <h2 style="margin:24px 0 12px;font-size:15px;color:#0f172a">Parámetros del sensor</h2>
               ${formatSensorTable(input)}
+
+              ${accionEscalada}
 
               <table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px auto 0">
                 <tr>

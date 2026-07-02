@@ -29,13 +29,17 @@ function pickMtbfUnit(values: (number | null)[]): { div: number; label: string; 
     : { div: 1, label: 'horas', decimals: 1 };
 }
 
-/** MTTR: minutos si < 1 h, horas si < 48 h, días si ≥ 48 h. */
+/** MTTR en gráfico: siempre horas (2 dec. si < 1 h para evitar 0.0) o días si ≥ 48 h. */
 function pickMttrUnit(values: (number | null)[]): { div: number; label: string; decimals: number } {
   const nums = values.filter((v): v is number => v != null);
   const max = nums.length ? Math.max(...nums) : 0;
-  if (max < 1) return { div: 1 / 60, label: 'min', decimals: 0 };
   if (max >= 48) return { div: 24, label: 'días', decimals: 1 };
-  return { div: 1, label: 'horas', decimals: 1 };
+  return { div: 1, label: 'horas', decimals: max < 1 ? 2 : 1 };
+}
+
+function roundToDecimals(n: number, decimals: number): number {
+  const f = 10 ** decimals;
+  return Math.round(n * f) / f;
 }
 
 function fmtMttr(h: number | null): string {
@@ -78,9 +82,7 @@ function ReliabilityBars({
     .filter((r) => r[metric] != null)
     .map((r) => {
       const raw = (r[metric] as number) / div;
-      const valor =
-        decimals === 0 ? Math.round(raw) : Math.round(raw * 10) / 10;
-      return { maquinaId: r.maquinaId, valor };
+      return { maquinaId: r.maquinaId, valor: roundToDecimals(raw, decimals) };
     });
 
   if (data.length === 0) {
@@ -96,11 +98,14 @@ function ReliabilityBars({
       <BarChart data={data} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
         <XAxis dataKey="maquinaId" tick={{ fontSize: 11, fill: 'var(--color-ink-muted)' }} />
-        <YAxis tick={{ fontSize: 11, fill: 'var(--color-ink-muted)' }} />
+        <YAxis
+          tick={{ fontSize: 11, fill: 'var(--color-ink-muted)' }}
+          tickFormatter={(v) => roundToDecimals(Number(v), decimals).toFixed(decimals)}
+        />
         <Tooltip
           contentStyle={TOOLTIP_STYLE}
           cursor={{ fill: 'var(--color-surface-2)' }}
-          formatter={(v) => [`${v} ${unitLabel}`, '']}
+          formatter={(v) => [`${roundToDecimals(Number(v), decimals).toFixed(decimals)} ${unitLabel}`, '']}
         />
         <Bar dataKey="valor" name={unitLabel} fill={color} radius={[4, 4, 0, 0]} />
       </BarChart>

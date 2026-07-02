@@ -248,14 +248,15 @@ export class NotificationsService {
       umbralRepetitivo,
     });
 
-    // Toggle "escalar plan RAG": al alcanzar su umbral, anexa la acción escalada del tipo de fallo.
-    if (alcanzaRag && repCfg.notificaciones.rag) {
-      const accionEscalada = await this.configCatalog.getEscalationActionText(tipoFalloCodigo);
-      if (accionEscalada) {
-        messageInput.planEscalado = `Plan escalado por reincidencia — ${accionEscalada}`;
-      }
-    } else if (!repCfg.notificaciones.rag) {
+    // Acción escalada (Config → Fallos repetitivos): solo si la falla es repetitiva y el toggle RAG está activo.
+    messageInput.accionEscaladaConfig = null;
+    if (esRepetitivo && alcanzaRag && repCfg.notificaciones.rag) {
+      messageInput.accionEscaladaConfig =
+        await this.configCatalog.getEscalationActionText(tipoFalloCodigo);
+    }
+    if (!esRepetitivo || !repCfg.notificaciones.rag) {
       messageInput.planEscalado = null;
+      if (!esRepetitivo) messageInput.accionEscaladaConfig = null;
     }
 
     if (recipients.tecnico) {
