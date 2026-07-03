@@ -48,12 +48,8 @@ export function useRagSources() {
 
 export function useSettingsMutations() {
   return {
-    saveMlSettings: async (payload: {
-      umbral_ensemble_falla: number;
-      agreement_minimo_s3: string;
-    }) => {
+    saveMlSettings: async (payload: { agreement_minimo_s3: string }) => {
       const result = await configService.saveConfig({
-        umbral_ensemble_falla: payload.umbral_ensemble_falla,
         agreement_minimo_s3: payload.agreement_minimo_s3,
       });
       await globalMutate('/config', result, false);
@@ -112,6 +108,11 @@ export function useSettingsMutations() {
     },
     activateModel: async (id: number, etapa: EtapaModelo) => {
       const result = await mlModelsService.activate(id);
+      await globalMutate(['/ml-models', etapa]);
+      return result;
+    },
+    updateModelUmbral: async (id: number, umbral: number, etapa: EtapaModelo) => {
+      const result = await mlModelsService.updateUmbral(id, umbral);
       await globalMutate(['/ml-models', etapa]);
       return result;
     },

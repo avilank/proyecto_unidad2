@@ -12,6 +12,10 @@ export class MlModelsRepository {
   activate(id: number): Promise<MlModelConfig> {
     return apiClient.patch<MlModelConfig>(`/ml-models/${id}/activate`);
   }
+
+  updateUmbral(id: number, umbral: number): Promise<MlModelConfig> {
+    return apiClient.patch<MlModelConfig>(`/ml-models/${id}/umbral`, { umbral });
+  }
 }
 
 export const mlModelsRepository = new MlModelsRepository();

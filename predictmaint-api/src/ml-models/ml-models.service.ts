@@ -10,6 +10,7 @@ import {
   type MlBinaryMetricsPayload,
   type MlMulticlassMetricsPayload,
 } from './ml-metrics-sync';
+import { mlSlugToNombre } from '../common/utils/modelo-ml.util';
 
 const ML_MODEL_DESCRIPTIONS: Record<string, string> = {
   XGBoost: 'Mayor precisión — Recomendado',
@@ -57,6 +58,7 @@ export class MlModelsService {
             : null,
       activo: m.esDefault,
       descripcion: ML_MODEL_DESCRIPTIONS[m.nombre] ?? m.version ?? null,
+      umbral: m.umbral != null ? Number(m.umbral) : 0.5,
       tn: m.tn ?? null,
       fp: m.fp ?? null,
       fn: m.fn ?? null,
@@ -86,6 +88,27 @@ export class MlModelsService {
       : { esClasificacion: true };
     await this.modeloModel.update({ esDefault: false }, { where: filter });
     await modelo.update({ esDefault: true });
+    await modelo.reload();
     return this.toResponse(modelo);
+  }
+
+  async updateUmbral(id: number, umbral: number) {
+    const modelo = await this.modeloModel.findByPk(id);
+    if (!modelo) throw new NotFoundException('Modelo no encontrado');
+    if (!modelo.esPrediccion) {
+      throw new NotFoundException('Solo los modelos S-1 admiten umbral de clasificación');
+    }
+    await modelo.update({ umbral });
+    await modelo.reload();
+    return this.toResponse(modelo);
+  }
+
+  async getUmbralForLeader(slugOrNombre: string, fallback = 0.5): Promise<number> {
+    const nombre = mlSlugToNombre(slugOrNombre);
+    const modelo = await this.modeloModel.findOne({
+      where: { nombre, esPrediccion: true },
+    });
+    const value = modelo?.umbral != null ? Number(modelo.umbral) : NaN;
+    return !Number.isNaN(value) && value > 0 ? value : fallback;
   }
 }

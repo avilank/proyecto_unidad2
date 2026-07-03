@@ -438,7 +438,11 @@ export class SensorReadingsService {
     });
     await alert.update({ nivelRiesgo, estado: EstadoAlerta.ANALIZANDO });
 
-    const umbral = await this.getUmbralFalla();
+    const leaderSlug = predictResult.modeloLider ?? liderS1?.modelo;
+    const umbralGlobal = await this.getUmbralFalla();
+    const umbral = leaderSlug
+      ? await this.mlModelsService.getUmbralForLeader(leaderSlug, umbralGlobal)
+      : umbralGlobal;
     const s1Falla = scoreLider >= umbral;
 
     let tipoFalloFinal = triggered.tipoFallo;

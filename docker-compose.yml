@@ -8,7 +8,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql
       - ./docker/postgres/01-restore-backup.sh:/docker-entrypoint-initdb.d/01-restore-backup.sh:ro
-      - ./seeds:/seed:ro
+      - ./docker/postgres:/seed:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U predictmaint -d predictmaint']
       interval: 5s
@@ -24,7 +24,7 @@ services:
       API_KEY: ml-secret-key
       MODEL_ARTIFACTS_PATH: /app/artifacts
       DATASET_PATH: /app/ai4i2020.csv
-      OPENROUTER_API_KEY: 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
+      OPENROUTER_API_KEY: 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
       RAG_USE_LLM: true
       RAG_PROVIDER: openrouter
       RAG_MODEL: openai/gpt-4o-mini
@@ -62,7 +62,7 @@ services:
       PORT: '3001'
       EVALUACION_COOLDOWN_MINUTOS: '15'
       SEND_EMAIL_WEBHOOK: https://n8n.yamboly.lat/webhook/acf0882c-1ca1-4656-99d7-6ccd5d8fbc5c
-      FRONTEND_URL: http://localhost:3000
+      FRONTEND_URL: http://34.59.162.117
       DEMO_AUTOFAULT_ENABLED: 'true'
       DEMO_AUTOFAULT_MIN: '10'
       DEMO_AUTOFAULT_BIAS: '0.7'

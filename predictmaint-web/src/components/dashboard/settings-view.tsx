@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { mutate as globalMutate } from 'swr';
 import { Topbar } from '@/components/common/topbar';
 import { Button } from '@/components/ui/button';
 import {
@@ -25,6 +26,7 @@ import {
 import {
   useDispatchSchedule,
   useEscalationActions,
+  useMlModels,
   useNotificationRules,
   useRagSources,
   useSettingsMutations,
@@ -32,6 +34,7 @@ import {
 } from '@/presentation/hooks/useSettings';
 import { RagSettingsTab } from '@/components/dashboard/settings/rag-settings-tab';
 import type { RagSource } from '@/core/entities';
+import { EtapaModelo } from '@/core/types';
 import { cn } from '@/lib/utils/cn';
 
 const DEFAULT_THRESHOLDS: ThresholdMap = {
@@ -64,14 +67,15 @@ export function SettingsView() {
   const [toast, setToast] = useState<string | null>(null);
 
   const config = useSystemConfig();
+  const s1Models = useMlModels(EtapaModelo.S1);
   const schedule = useDispatchSchedule();
   const notificationRules = useNotificationRules();
   const escalationActions = useEscalationActions();
   const ragSources = useRagSources();
   const mutations = useSettingsMutations();
 
-  const [umbral, setUmbral] = useState(0.5);
   const [agreement, setAgreement] = useState<AgreementMinimo>('MEDIO');
+  const [modelThresholds, setModelThresholds] = useState<Record<number, number>>({});
   const [scheduleItems, setScheduleItems] = useState<DispatchScheduleItem[]>([]);
   const [thresholds, setThresholds] = useState<ThresholdMap>(DEFAULT_THRESHOLDS);
   const [tiemposAtencion, setTiemposAtencion] = useState<TiemposAtencion>(DEFAULT_TIEMPOS_ATENCION);
@@ -84,7 +88,6 @@ export function SettingsView() {
 
   useEffect(() => {
     if (config.data) {
-      setUmbral(parseFloat(config.data.umbral_ensemble_falla) || 0.5);
       const raw = (config.data.agreement_minimo_s3 ?? 'MEDIO').toUpperCase();
       if (raw.includes('ALTO')) setAgreement('ALTO');
       else if (raw.includes('BAJO')) setAgreement('BAJO');
@@ -106,6 +109,21 @@ export function SettingsView() {
       }
     }
   }, [config.data]);
+
+  useEffect(() => {
+    const rows = s1Models.data;
+    if (!rows?.length) return;
+    setModelThresholds((prev) => {
+      const next = { ...prev };
+      for (const model of rows) {
+        if (model.id >= 100) continue;
+        if (!(model.id in next)) {
+          next[model.id] = model.umbral ?? 0.5;
+        }
+      }
+      return next;
+    });
+  }, [s1Models.data]);
 
   useEffect(() => {
     if (escalationActions.data?.length) setEscalationItems(escalationActions.data);
@@ -136,10 +154,17 @@ export function SettingsView() {
     setToast(null);
     try {
       if (tab === 'ml') {
-        await mutations.saveMlSettings({
-          umbral_ensemble_falla: umbral,
-          agreement_minimo_s3: agreement,
-        });
+        await mutations.saveMlSettings({ agreement_minimo_s3: agreement });
+        for (const model of s1Models.data ?? []) {
+          if (model.id >= 100) continue;
+          const next = modelThresholds[model.id];
+          if (next == null) continue;
+          const prev = model.umbral ?? 0.5;
+          if (Math.abs(next - prev) >= 0.001) {
+            await mutations.updateModelUmbral(model.id, next, EtapaModelo.S1);
+          }
+        }
+        await globalMutate(['/ml-models', EtapaModelo.S1]);
       } else if (tab === 'messages' && scheduleItems.length) {
         await mutations.saveDispatchSchedule(scheduleItems);
       } else if (tab === 'alerts') {
@@ -211,10 +236,12 @@ export function SettingsView() {
 
         {tab === 'ml' && (
           <MlModelsSettingsTab
-            umbral={umbral}
             agreement={agreement}
-            onUmbralChange={setUmbral}
+            modelThresholds={modelThresholds}
             onAgreementChange={setAgreement}
+            onModelThresholdChange={(id, value) =>
+              setModelThresholds((prev) => ({ ...prev, [id]: value }))
+            }
           />
         )}
 
