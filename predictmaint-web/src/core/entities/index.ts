@@ -288,6 +288,7 @@ export interface MlModelConfig {
   valorMetrica: number | null;
   activo: boolean;
   descripcion: string | null;
+  umbral?: number;
 }
 
 export interface AppConfig {

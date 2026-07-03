@@ -23,6 +23,7 @@ const FALLBACK_S1: MlModelConfig[] = [
     valorMetrica: 0.961,
     activo: true,
     descripcion: 'Mayor precisión — Recomendado',
+    umbral: 0.5,
   },
   {
     id: 102,
@@ -33,6 +34,7 @@ const FALLBACK_S1: MlModelConfig[] = [
     valorMetrica: 0.947,
     activo: false,
     descripcion: 'Robusto ante ruido y outliers',
+    umbral: 0.5,
   },
   {
     id: 103,
@@ -43,6 +45,7 @@ const FALLBACK_S1: MlModelConfig[] = [
     valorMetrica: 0.831,
     activo: false,
     descripcion: 'Alta interpretabilidad',
+    umbral: 0.5,
   },
 ];
 
@@ -133,15 +136,15 @@ function ModelOption({
 }
 
 export function MlModelsSettingsTab({
-  umbral,
   agreement,
-  onUmbralChange,
+  modelThresholds,
   onAgreementChange,
+  onModelThresholdChange,
 }: {
-  umbral: number;
   agreement: AgreementMinimo;
-  onUmbralChange: (v: number) => void;
+  modelThresholds: Record<number, number>;
   onAgreementChange: (v: AgreementMinimo) => void;
+  onModelThresholdChange: (id: number, value: number) => void;
 }) {
   const s1 = useMlModels(EtapaModelo.S1);
   const s2 = useMlModels(EtapaModelo.S2);
@@ -159,6 +162,11 @@ export function MlModelsSettingsTab({
       setActivating(null);
     }
   };
+
+  const activeS1 = s1Items.find((m) => m.activo) ?? s1Items[0];
+  const activeUmbral = activeS1
+    ? (modelThresholds[activeS1.id] ?? activeS1.umbral ?? 0.5)
+    : 0.5;
 
   return (
     <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
@@ -184,18 +192,22 @@ export function MlModelsSettingsTab({
             <div className="rounded-lg border border-border bg-surface-2/35 p-4 pt-3">
               <div className="mb-2 flex items-center justify-between text-sm">
                 <span className="text-ink-soft">
-                  Umbral de clasificación de fallo (ensemble_avg):
+                  Umbral de clasificación de fallo:
                 </span>
-                <span className="font-bold text-accent">{umbral.toFixed(2)}</span>
+                <span className="font-bold text-accent">{activeUmbral.toFixed(2)}</span>
               </div>
               <input
                 type="range"
                 min={0.1}
                 max={0.9}
                 step={0.01}
-                value={umbral}
-                onChange={(e) => onUmbralChange(parseFloat(e.target.value))}
+                value={activeUmbral}
+                onChange={(e) => {
+                  if (!activeS1) return;
+                  onModelThresholdChange(activeS1.id, parseFloat(e.target.value));
+                }}
                 className="h-2 w-full cursor-pointer accent-accent"
+                aria-label={`Umbral ${activeS1?.modelo ?? 'S-1'}`}
               />
               <div className="mt-1 flex justify-between text-[10px] text-ink-muted">
                 <span>Bajo</span>

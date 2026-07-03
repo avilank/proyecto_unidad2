@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseIntPipe, Patch, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, ParseIntPipe, Patch, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { EtapaModelo } from '../common/enums';
 import { MlModelsService } from './ml-models.service';
@@ -18,5 +18,18 @@ export class MlModelsController {
   @ApiOperation({ summary: 'Activar modelo por etapa' })
   activate(@Param('id', ParseIntPipe) id: number) {
     return this.mlModelsService.activate(id);
+  }
+
+  @Patch(':id/umbral')
+  @ApiOperation({ summary: 'Actualizar umbral de clasificación S-1' })
+  updateUmbral(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('umbral') umbral: number,
+  ) {
+    const value = Number(umbral);
+    if (Number.isNaN(value) || value < 0.1 || value > 0.9) {
+      throw new BadRequestException('El umbral debe estar entre 0.10 y 0.90');
+    }
+    return this.mlModelsService.updateUmbral(id, value);
   }
 }

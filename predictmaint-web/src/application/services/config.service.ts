@@ -102,6 +102,10 @@ export class MlModelsService {
   activate(id: number): Promise<MlModelConfig> {
     return mlModelsRepository.activate(id);
   }
+
+  updateUmbral(id: number, umbral: number): Promise<MlModelConfig> {
+    return mlModelsRepository.updateUmbral(id, umbral);
+  }
 }
 
 export const configService = new ConfigService();

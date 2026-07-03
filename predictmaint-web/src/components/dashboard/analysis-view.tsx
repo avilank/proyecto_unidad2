@@ -17,8 +17,10 @@ import { useRagPlan } from '@/presentation/hooks/useRag';
 import { EstadoOrden } from '@/core/types';
 import { KpiCard } from '@/components/ui/kpi-card';
 import { FAULT_ICONS, FAULT_KPI_TONE, FAULT_LABELS } from '@/lib/constants/fault-types';
+import { formatModelLabel } from '@/lib/utils/dashboard';
 import { cn } from '@/lib/utils/cn';
-import { useSystemConfig } from '@/presentation/hooks/useSettings';
+import { useSystemConfig, useMlModels } from '@/presentation/hooks/useSettings';
+import { EtapaModelo } from '@/core/types';
 import { Activity, Gauge, ShieldCheck, Target } from 'lucide-react';
 
 const TABS = [
@@ -66,7 +68,9 @@ export function AnalysisView({
   const machine = useMachine(machineId);
   const orders = useOrders({ maquinaId: machineId, limit: 50 });
   const systemConfig = useSystemConfig();
-  const umbralFalla = parseFloat(systemConfig.data?.umbral_ensemble_falla ?? '0.5') || 0.5;
+  const s1Models = useMlModels(EtapaModelo.S1);
+  const umbralFallback =
+    parseFloat(systemConfig.data?.umbral_ensemble_falla ?? '0.5') || 0.5;
 
   const orderItems = orders.data?.items ?? [];
 
@@ -105,6 +109,15 @@ export function AnalysisView({
 
   const modeloPrediccion =
     binary.data?.modeloLider ?? analysisOrder?.modeloPrediccion ?? null;
+
+  const umbralFalla = useMemo(() => {
+    if (!modeloPrediccion || !s1Models.data?.length) return umbralFallback;
+    const displayName = formatModelLabel(modeloPrediccion);
+    const match = s1Models.data.find(
+      (m) => m.modelo === displayName || m.modelo.toLowerCase() === modeloPrediccion.toLowerCase(),
+    );
+    return match?.umbral ?? umbralFallback;
+  }, [modeloPrediccion, s1Models.data, umbralFallback]);
 
   const s1Falla =
     Boolean(analysisOrder?.tipoFallo) ||
@@ -229,8 +242,11 @@ export function AnalysisView({
       <div className="flex flex-col gap-4 px-6 py-5">
       {!s1Falla && !loading && binary.data && tab === 's1' && (
         <p className="rounded-md bg-surface-2 px-4 py-2 text-sm text-ink-muted">
-          S-1 no confirmó falla (ensemble &lt; {umbralFalla}) — el pipeline se detiene aquí. Tabs 2 y 3
-          permanecen bloqueados.
+          S-1 no confirmó falla
+          {modeloPrediccion
+            ? ` — ${prettyModel(modeloPrediccion)} quedó bajo su umbral (${umbralFalla.toFixed(2)})`
+            : ` — probabilidad bajo umbral (${umbralFalla.toFixed(2)})`}
+          . El pipeline se detiene aquí; tabs 2 y 3 permanecen bloqueados.
         </p>
       )}
 
@@ -629,12 +645,14 @@ function RagTab({
                 </div>
               </div>
             ))}
-            <RagSourcesFooter fuentes={data?.fuentes} />
-            <RagRegenerateButton
-              orderId={orderId}
-              fullWidth
-              onRegenerated={onRegenerated}
-            />
+            <div className="space-y-4">
+              <RagSourcesFooter fuentes={data?.fuentes} />
+              <RagRegenerateButton
+                orderId={orderId}
+                fullWidth
+                onRegenerated={onRegenerated}
+              />
+            </div>
           </CardContent>
         </Card>
 

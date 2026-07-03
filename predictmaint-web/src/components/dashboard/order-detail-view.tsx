@@ -293,10 +293,12 @@ export function OrderDetailView({ orderId }: { orderId: string }) {
                       <p className="text-sm text-ink-muted">Sin recomendaciones (S-1 sin falla o sin S-3)</p>
                     )}
                   </div>
-                  <RagSourcesFooter fuentes={rag.data?.fuentes} />
-                  {!isTechnician && hasRagPlan && !isFinalized && (
-                    <RagRegenerateButton orderId={orderId} onRegenerated={refresh} />
-                  )}
+                  <div className="mt-5 space-y-4">
+                    <RagSourcesFooter fuentes={rag.data?.fuentes} />
+                    {!isTechnician && hasRagPlan && !isFinalized && (
+                      <RagRegenerateButton orderId={orderId} onRegenerated={refresh} />
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
