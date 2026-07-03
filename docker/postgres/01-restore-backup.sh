@@ -15,7 +15,7 @@ pg_restore \
   -U "$POSTGRES_USER" \
   -d "$POSTGRES_DB" \
   --no-owner \
-  --role="$POSTGRES_USER" \
+  --no-privileges \
   "$BACKUP"
 
 echo "[postgres-init] Restore completado."

@@ -8,7 +8,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql
       - ./docker/postgres/01-restore-backup.sh:/docker-entrypoint-initdb.d/01-restore-backup.sh:ro
-      - ./seeds:/seed:ro
+      - ./docker/postgres:/seed:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U predictmaint -d predictmaint']
       interval: 5s
