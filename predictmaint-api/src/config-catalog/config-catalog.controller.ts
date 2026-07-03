@@ -14,6 +14,7 @@ export class ConfigController {
     return this.configCatalogService.getConfig(grupo);
   }
 
+  //actualizar la configuracion
   @Patch('config')
   @ApiOperation({ summary: 'Actualizar configuración' })
   patchConfig(@Body() body: Record<string, unknown>) {

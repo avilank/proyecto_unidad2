@@ -181,6 +181,7 @@ def train() -> dict:
     )
     print("\nReporte LightGBM (test fallos):\n", report_s2)
 
+    """Guardar las metricas de los modelos"""
     all_metrics = {"s1": s1_metrics, "s2": s2_metrics}
     metrics_path = artifacts_path / "metrics.json"
     with metrics_path.open("w", encoding="utf-8") as fh:

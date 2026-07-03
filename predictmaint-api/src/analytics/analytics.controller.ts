@@ -65,6 +65,12 @@ export class AnalyticsController {
     return this.analyticsService.getPredictionValidation(parseAnalyticsFilters(query));
   }
 
+  @Get('validation-summary')
+  @ApiOperation({ summary: 'Conteo S-1/S-2 aprobados vs rechazados por el técnico' })
+  getValidationSummary(@Query() query: Record<string, string>) {
+    return this.analyticsService.getValidationSummary(parseAnalyticsFilters(query));
+  }
+
   @Get('reliability')
   @ApiOperation({ summary: 'MTTR y MTBF por máquina y global' })
   getReliability(@Query() query: Record<string, string>) {

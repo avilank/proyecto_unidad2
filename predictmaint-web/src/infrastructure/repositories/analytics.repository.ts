@@ -7,6 +7,7 @@ import type {
   NotificationLogEntry,
   PaginatedResponse,
   PredictionValidationRow,
+  ValidationSummaryResponse,
   RecurrentMachineFault,
   ReliabilityResponse,
   SensorTrendPoint,
@@ -93,6 +94,12 @@ export class AnalyticsRepository implements IAnalyticsRepository {
 
   getPredictionValidation(filters: AnalyticsFilters = { range: 'month' }): Promise<PredictionValidationRow[]> {
     return apiClient.get<PredictionValidationRow[]>('/analytics/prediction-validation', {
+      params: analyticsFiltersToParams(filters),
+    });
+  }
+
+  getValidationSummary(filters: AnalyticsFilters = { range: 'month' }): Promise<ValidationSummaryResponse> {
+    return apiClient.get<ValidationSummaryResponse>('/analytics/validation-summary', {
       params: analyticsFiltersToParams(filters),
     });
   }

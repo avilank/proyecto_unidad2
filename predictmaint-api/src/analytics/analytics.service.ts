@@ -571,22 +571,41 @@ export class AnalyticsService {
       order: [['fechaCreacion', 'ASC']],
     });
 
-    const porMaquinaMap = new Map<string, { repairMs: number[]; detTimes: number[] }>();
+    const porMaquinaMap = new Map<
+      string,
+      {
+        detecciones: { ms: number; iso: string }[];
+        reparaciones: { ms: number; inicio: string; fin: string }[];
+      }
+    >();
     for (const o of ordenes) {
       const codigo = o.maquina?.codigo ?? String(o.idMaquina);
-      const entry = porMaquinaMap.get(codigo) ?? { repairMs: [], detTimes: [] };
-      entry.detTimes.push(new Date(o.fechaCreacion).getTime());
+      const entry = porMaquinaMap.get(codigo) ?? { detecciones: [], reparaciones: [] };
+      entry.detecciones.push({
+        ms: new Date(o.fechaCreacion).getTime(),
+        iso: new Date(o.fechaCreacion).toISOString(),
+      });
       if (o.estado === EstadoOrden.FINALIZADO && o.fechaFin) {
         const start = o.fechaInicio ?? o.fechaCreacion;
-        const ms = new Date(o.fechaFin).getTime() - new Date(start).getTime();
-        if (ms > 0) entry.repairMs.push(ms);
+        const startMs = new Date(start).getTime();
+        const finMs = new Date(o.fechaFin).getTime();
+        const ms = finMs - startMs;
+        if (ms > 0) {
+          entry.reparaciones.push({
+            ms,
+            inicio: new Date(start).toISOString(),
+            fin: new Date(o.fechaFin).toISOString(),
+          });
+        }
       }
       porMaquinaMap.set(codigo, entry);
     }
 
     const H = 1000 * 60 * 60;
+    //promedio de los tiempos de reparacion
     const avg = (xs: number[]) =>
       xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+    //convertir a horas
     const toH = (ms: number | null) =>
       ms != null ? Math.round((ms / H) * 10) / 10 : null;
     /** MTTR < 1 h: conserva precisión en minutos (evita 3 min → 0.0 h). */
@@ -601,17 +620,40 @@ export class AnalyticsService {
 
     const porMaquina = [...porMaquinaMap.entries()]
       .map(([maquinaId, e]) => {
-        const sorted = [...e.detTimes].sort((a, b) => a - b);
+        const sortedDets = [...e.detecciones].sort((a, b) => a.ms - b.ms);
         const gaps: number[] = [];
-        for (let i = 1; i < sorted.length; i++) gaps.push(sorted[i] - sorted[i - 1]);
-        allRepair.push(...e.repairMs);
+        const periodosEntreFallas: { desde: string; hasta: string; duracionHoras: number }[] =
+          [];
+        for (let i = 1; i < sortedDets.length; i++) {
+          const ms = sortedDets[i].ms - sortedDets[i - 1].ms;
+          gaps.push(ms);
+          periodosEntreFallas.push({
+            desde: sortedDets[i - 1].iso,
+            hasta: sortedDets[i].iso,
+            duracionHoras: Math.round((ms / H) * 100) / 100,
+          });
+        }
+
+        const reparacionesDetalle = e.reparaciones.map((r) => ({
+          inicio: r.inicio,
+          fin: r.fin,
+          duracionHoras: Math.round((r.ms / H) * 100) / 100,
+        }));
+        const repairMs = e.reparaciones.map((r) => r.ms);
+
+        allRepair.push(...repairMs);
         allGaps.push(...gaps);
         return {
           maquinaId,
-          mttrHoras: toMttrH(avg(e.repairMs)),
+          mttrHoras: toMttrH(avg(repairMs)),
           mtbfHoras: toH(avg(gaps)),
-          reparaciones: e.repairMs.length,
-          fallas: e.detTimes.length,
+          reparaciones: repairMs.length,
+          fallas: sortedDets.length,
+          fechasDeteccion: sortedDets.map((d) => d.iso),
+          reparacionesDetalle,
+          periodosEntreFallas,
+          duracionesReparacionHoras: reparacionesDetalle.map((r) => r.duracionHoras),
+          tiemposEntreFallasHoras: periodosEntreFallas.map((p) => p.duracionHoras),
         };
       })
       .sort((a, b) => b.fallas - a.fallas);
@@ -693,12 +735,7 @@ export class AnalyticsService {
     };
   }
 
-  /**
-   * Historial de aciertos del modelo: contrasta la predicción automática
-   * (falla / tipo de falla) contra la decisión del técnico (aceptada / rechazada).
-   * Solo incluye órdenes con técnico asignado y observación técnica registrada.
-   */
-  async getPredictionValidation(filters: ParsedAnalyticsFilters = { range: 'month' }) {
+  private async loadValidatedOrdenes(filters: ParsedAnalyticsFilters) {
     const { from, to } = resolveDateRange(filters);
     const where: Record<string, unknown> = {
       fechaCreacion: { [Op.gte]: from, [Op.lte]: to },
@@ -740,13 +777,55 @@ export class AnalyticsService {
       order: [['fechaCreacion', 'DESC']],
     });
 
-    const filtered = this.applyAnalyticsFilters(ordenes, filters);
+    return this.applyAnalyticsFilters(ordenes, filters);
+  }
+
+  private latestObservacion(orden: Orden) {
+    return [...(orden.observacionesTecnica ?? [])].sort(
+      (a, b) =>
+        new Date(b.fechaRegistro).getTime() - new Date(a.fechaRegistro).getTime(),
+    )[0];
+  }
+
+  async getValidationSummary(filters: ParsedAnalyticsFilters = { range: 'month' }) {
+    const ordenes = await this.loadValidatedOrdenes(filters);
+    let predAprob = 0;
+    let predRech = 0;
+    let clasAprob = 0;
+    let clasRech = 0;
+
+    for (const o of ordenes) {
+      const obs = this.latestObservacion(o);
+      if (obs?.esPrediccionCorrecta === true) predAprob += 1;
+      else if (obs?.esPrediccionCorrecta === false) predRech += 1;
+      if (obs?.esClasificacionCorrecta === true) clasAprob += 1;
+      else if (obs?.esClasificacionCorrecta === false) clasRech += 1;
+    }
+
+    return {
+      prediccion: {
+        aprobados: predAprob,
+        rechazados: predRech,
+        total: predAprob + predRech,
+      },
+      clasificacion: {
+        aprobados: clasAprob,
+        rechazados: clasRech,
+        total: clasAprob + clasRech,
+      },
+    };
+  }
+
+  /**
+   * Historial de aciertos del modelo: contrasta la predicción automática
+   * (falla / tipo de falla) contra la decisión del técnico (aceptada / rechazada).
+   * Solo incluye órdenes con técnico asignado y observación técnica registrada.
+   */
+  async getPredictionValidation(filters: ParsedAnalyticsFilters = { range: 'month' }) {
+    const filtered = await this.loadValidatedOrdenes(filters);
 
     return filtered.map((o) => {
-      const obs = [...(o.observacionesTecnica ?? [])].sort(
-        (a, b) =>
-          new Date(b.fechaRegistro).getTime() - new Date(a.fechaRegistro).getTime(),
-      )[0];
+      const obs = this.latestObservacion(o);
       const lider = o.analisis?.clasificaciones?.find((c) => c.esLider);
       const rechazada =
         obs?.decision === DecisionPrediccion.RECHAZADA ||
@@ -766,6 +845,7 @@ export class AnalyticsService {
           ? DecisionPrediccion.RECHAZADA
           : DecisionPrediccion.ACEPTADA,
         esPrediccionCorrecta: obs?.esPrediccionCorrecta ?? null,
+        esClasificacionCorrecta: obs?.esClasificacionCorrecta ?? null,
         justificacion: rechazada ? (obs?.comentario ?? null) : null,
         estado: o.estado,
         fecha: (obs?.fechaRegistro ?? o.fechaCreacion).toISOString(),

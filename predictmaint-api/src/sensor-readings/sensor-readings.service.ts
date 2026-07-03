@@ -211,6 +211,7 @@ export class SensorReadingsService {
     maquinaCodigo: string,
   ): Promise<void> {
     const fuentes = await this.getActiveRagSources(tipoFallo);
+    // se envia la lectura al modelo RAG para generar las recomendaciones
     const ragResult = await this.mlGateway.rag({
       tipoFallo,
       maquinaId: maquinaCodigo,
@@ -333,19 +334,21 @@ export class SensorReadingsService {
       toolWear: dto.toolWear,
     });
 
+    // Si no se activa ninguna regla, se emite la lectura y se retorna
     if (!triggered) {
       this.emitMonitoringReading(dto.maquinaId, readingResp);
       return { reading: readingResp };
     }
 
+    // Si se activa una regla, se verifica si se debe saltar el pipeline
     const gate = await this.shouldSkipPipeline(maquina.idMaquina);
     if (gate.skip) {
       this.emitMonitoringReading(dto.maquinaId, readingResp, {
-        skipped: gate.reason,
-        cooldownMinutosRestantes: gate.cooldownMinutosRestantes,
+        skipped: gate.reason, //frontend sepa que se saltó el pipeline
+        cooldownMinutosRestantes: gate.cooldownMinutosRestantes, //frontend sepa cuantos minutos faltan para que se pueda ejecutar el pipeline
       });
       return {
-        reading: readingResp,
+        reading: readingResp, 
         skipped: gate.reason,
         cooldownMinutosRestantes: gate.cooldownMinutosRestantes,
         order: gate.order
@@ -393,6 +396,7 @@ export class SensorReadingsService {
       fechaEvento: now,
     });
 
+    // Se predicen los resultados del ML 
     const features: MlPredictFeatures = {
       type: dto.tipo,
       airTemperature: dto.airTemperature,
@@ -402,10 +406,11 @@ export class SensorReadingsService {
       toolWear: dto.toolWear,
     };
 
+    //prediccion del modelo S1
     const predictResult = await this.mlGateway.predict(features);
     const scoreLider = predictResult.confianzaLider ?? predictResult.ensembleAvg;
-    // El nivel de riesgo se calcula con los umbrales de Configuración → Alertas,
-    // no con el que devuelve el ML (así la configuración sí influye).
+
+    // se calcula el nivel de riesgo con la confianza del modelo lider o el promedio de las confianzas de los modelos
     const nivelRiesgo =
       scoreLider != null
         ? await this.computeNivelRiesgo(Number(scoreLider))
@@ -453,6 +458,7 @@ export class SensorReadingsService {
     } else {
       await alert.update({ estado: EstadoAlerta.CLASIFICANDO });
 
+      // se envia la lectura al modelo S2 para clasificar el tipo de falla
       const classifyResult = await this.mlGateway.classify(features);
       const agreementMinimo = await this.getAgreementMinimo();
       const votes = classifyResult.modelos.map((m) => m.tipoPredicho);
@@ -513,6 +519,7 @@ export class SensorReadingsService {
 
       await alert.update({ estado: EstadoAlerta.PENDIENTE });
 
+      // Se asigna un técnico a la orden
       tecnico = await this.techniciansService.assignForOrder(nivelRiesgo, tipoFalloFinal);
 
       if (tecnico) {

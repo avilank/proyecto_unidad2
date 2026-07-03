@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Topbar } from '@/components/common/topbar';
 import { AvailabilityPanel } from '@/components/dashboard/analytics/availability-panel';
+import { ValidationStagePiePanel } from '@/components/dashboard/analytics/validation-summary-charts-panel';
 import { AnalyticsFiltersBar } from '@/components/dashboard/analytics/analytics-filters-bar';
 import { AnalyticsKpiRow } from '@/components/dashboard/analytics/analytics-kpi-row';
 import { CsvLogTable } from '@/components/dashboard/analytics/csv-log-table';
@@ -29,6 +30,7 @@ import {
   useNotificationLog,
   useReliability,
   useUnattendedOrders,
+  useValidationSummary,
 } from '@/presentation/hooks/useAnalytics';
 
 export function AnalyticsView() {
@@ -48,6 +50,7 @@ export function AnalyticsView() {
   const faults = useFaultsByType(reportFilters);
   const recurrence = useMachineRecurrence(7, 2, reportFilters);
   const availability = useAvailability();
+  const validationSummary = useValidationSummary(reportFilters);
   const reliability = useReliability(reportFilters);
   const notificationLog = useNotificationLog(50);
 
@@ -80,7 +83,21 @@ export function AnalyticsView() {
           <RecurrencePanel data={recurrence.data} isLoading={recurrence.isLoading} ventanaDias={7} minFallos={2} />
         </div>
 
-        <AvailabilityPanel data={availability.data} isLoading={availability.isLoading} />
+        <div className="grid gap-4 lg:grid-cols-3 lg:items-stretch">
+          <AvailabilityPanel data={availability.data} isLoading={availability.isLoading} />
+          <ValidationStagePiePanel
+            title="Predicción (S-1)"
+            subtitle="Validación del técnico sobre la predicción binaria"
+            data={validationSummary.data?.prediccion}
+            isLoading={validationSummary.isLoading}
+          />
+          <ValidationStagePiePanel
+            title="Clasificación (S-2)"
+            subtitle="Validación del técnico sobre el tipo de falla"
+            data={validationSummary.data?.clasificacion}
+            isLoading={validationSummary.isLoading}
+          />
+        </div>
 
         <ReliabilityPanel data={reliability.data} isLoading={reliability.isLoading} />
 

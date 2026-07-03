@@ -85,9 +85,33 @@ export interface PredictionValidationRow {
   tipoFallo: string | null;
   decision: 'aceptada' | 'rechazada';
   esPrediccionCorrecta: boolean | null;
+  esClasificacionCorrecta: boolean | null;
   justificacion: string | null;
   estado: string;
   fecha: string;
+}
+
+export interface ValidationStageSummary {
+  aprobados: number;
+  rechazados: number;
+  total: number;
+}
+
+export interface ValidationSummaryResponse {
+  prediccion: ValidationStageSummary;
+  clasificacion: ValidationStageSummary;
+}
+
+export interface ReliabilityRepairDetail {
+  inicio: string;
+  fin: string;
+  duracionHoras: number;
+}
+
+export interface ReliabilityGapDetail {
+  desde: string;
+  hasta: string;
+  duracionHoras: number;
 }
 
 export interface ReliabilityMachine {
@@ -96,6 +120,13 @@ export interface ReliabilityMachine {
   mtbfHoras: number | null;
   reparaciones: number;
   fallas: number;
+  fechasDeteccion: string[];
+  reparacionesDetalle: ReliabilityRepairDetail[];
+  periodosEntreFallas: ReliabilityGapDetail[];
+  /** Cada reparación cerrada: fechaFin − fechaInicio (horas). */
+  duracionesReparacionHoras: number[];
+  /** Tiempo entre detecciones consecutivas (horas). [0] = de la 1.ª a la 2.ª falla. */
+  tiemposEntreFallasHoras: number[];
 }
 
 export interface ReliabilityResponse {

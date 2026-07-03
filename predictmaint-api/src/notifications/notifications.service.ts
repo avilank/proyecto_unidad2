@@ -346,6 +346,8 @@ export class NotificationsService {
         );
         await this.smtpEmail.send({ to: email, subject, html: emailBody, text: emailText });
       }
+      //se envia el mensaje por whatsapp o email si es necesario
+      //ENVIO
       if (needsPhone || sendEmailWebhook) {
         await this.webhookNotifier.send({
           email,
@@ -586,6 +588,7 @@ export class NotificationsService {
     return orden;
   }
 
+  //FALLAS REPETITIVAS
   private async countOccurrencesInWindow(
     idMaquina: number,
     idTipoFallo: number | undefined,

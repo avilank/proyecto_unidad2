@@ -247,6 +247,7 @@ export class ConfigCatalogService {
     return this.getEscalationActions();
   }
 
+  //actualizar la configuracion
   async patchConfig(values: Record<string, unknown>) {
     const cfg = await this.getOrCreateConfig();
     const patch: Partial<ConfiguracionAlertas> = { fechaActualizacion: new Date() };
@@ -272,6 +273,7 @@ export class ConfigCatalogService {
         parseTiemposAtencion(JSON.stringify(values.tiempos_atencion)),
       );
     }
+    //CONVERTER A JSON
     if (values.fallos_repetitivos != null) {
       patch.fallosRepetitivosJson = JSON.stringify(
         parseFallosRepetitivos(JSON.stringify(values.fallos_repetitivos)),

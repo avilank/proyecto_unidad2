@@ -55,6 +55,10 @@ export class AnalyticsService {
     return analyticsRepository.getPredictionValidation(filters);
   }
 
+  getValidationSummary(filters: AnalyticsFilters = { range: 'month' }) {
+    return analyticsRepository.getValidationSummary(filters);
+  }
+
   getReliability(filters: AnalyticsFilters = { range: 'week' }) {
     return analyticsRepository.getReliability(filters);
   }

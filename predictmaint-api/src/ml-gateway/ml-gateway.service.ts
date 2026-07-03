@@ -102,6 +102,7 @@ export class MlGatewayService {
     });
   }
 
+  //con axios se hace la peticion al endpoint /predict
   async predict(features: MlPredictFeatures): Promise<MlPredictResponse> {
     const { data } = await this.client.post<MlPredictResponse>('/predict', features);
     return data;

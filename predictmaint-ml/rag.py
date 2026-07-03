@@ -123,6 +123,7 @@ ESCALATION_BY_PRIORITY: dict[str, tuple[int, int]] = {
     "BAJO": (24, 48),
 }
 
+"""acciones recomendadas para cada tipo de falla"""
 FAULT_ACTION_PLANS: dict[str, list[dict[str, str]]] = {
     "HDF": [
         {
@@ -571,6 +572,8 @@ def _generate_with_llm(
     if not api_key:
         raise RuntimeError("API key LLM no configurada")
 
+    """provider y base_url para la API de OpenAI"""
+
     provider = os.getenv("RAG_PROVIDER", "openrouter").strip().lower()
     base_url = os.getenv("OPENAI_BASE_URL")
     if provider == "openrouter" and not base_url:
@@ -694,7 +697,6 @@ def _ensure_operational_detail(detail: str, fault: str, prioridad: str, escalado
         escalado=escalado,
     )
 
-
 def generate_action_plan(
     tipo_fallo: str,
     maquina_id: str,
@@ -703,9 +705,11 @@ def generate_action_plan(
     escalado: bool | None = None,
 ) -> dict[str, Any]:
     """Genera plan S-3 con RAG ligero. Si el LLM falla, devuelve plan local."""
+    # --- Entrada: normalizar tipo de fallo y flag de reincidencia ---
     fault = tipo_fallo.upper()
     is_escalated = bool(historial) if escalado is None else bool(escalado)
 
+    # --- Caso RNF: falla aleatoria → solo inspección manual, nunca LLM ---
     if fault == "RNF":
         _rag_log("fallback local -> fault=RNF reason=manual_inspection_required")
         acciones = [
@@ -719,20 +723,25 @@ def generate_action_plan(
             "fuentes": _fallback_sources(fault, fuentes),
         }
 
+    # --- Validación: rechazar tipos de fallo desconocidos ---
     if fault not in FAULT_ACTION_PLANS:
         raise ValueError(f"Tipo de fallo no soportado: {fault}")
 
+    # --- Fallback local: LLM desactivado por configuración (RAG_USE_LLM=false) ---
     if not _env_bool("RAG_USE_LLM", True):
         _rag_log(f"fallback local -> reason=RAG_USE_LLM_disabled fault={fault} machine={maquina_id}")
         return _template_plan(fault, maquina_id, is_escalated, fuentes)
 
+    # --- Fallback local: sin API key de OpenRouter/OpenAI ---
     if not _provider_api_key():
         _rag_log(f"fallback local -> reason=missing_openrouter_api_key fault={fault} machine={maquina_id}")
         return _template_plan(fault, maquina_id, is_escalated, fuentes)
 
+    # --- Camino preferido: OpenRouter/GPT; si falla → plantillas FAULT_ACTION_PLANS ---
     try:
         return _generate_with_llm(fault, maquina_id, is_escalated, fuentes)
     except Exception as exc:
+        # --- Mensaje en consola---
         _rag_log(
             "fallback local -> "
             f"provider={os.getenv('RAG_PROVIDER', 'openrouter')} "
@@ -748,4 +757,5 @@ def generate_action_plan(
             type(exc).__name__,
             exc,
         )
+        # --- Fallback local: plantillas FAULT_ACTION_PLANS ---
         return _template_plan(fault, maquina_id, is_escalated, fuentes)

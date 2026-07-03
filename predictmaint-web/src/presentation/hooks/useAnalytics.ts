@@ -68,6 +68,12 @@ export function usePredictionValidation(filters: AnalyticsFilters) {
   );
 }
 
+export function useValidationSummary(filters: AnalyticsFilters) {
+  return useSWR(['/analytics/validation-summary', filters], () =>
+    analyticsService.getValidationSummary(filters),
+  );
+}
+
 export function useReliability(filters: AnalyticsFilters) {
   return useSWR(['/analytics/reliability', filters], () =>
     analyticsService.getReliability(filters),

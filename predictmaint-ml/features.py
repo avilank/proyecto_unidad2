@@ -1,4 +1,4 @@
-"""Feature engineering compartido por entrenamiento e inferencia."""
+"""Feature engineering compartido por entrenamiento e inferencia. (main y train.py)"""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ FEATURE_COLUMNS: list[str] = [
     "Power",
 ]
 
+"""renombrar las columnas del csv"""
 CSV_COLUMN_MAP: dict[str, str] = {
     "Air temperature [K]": "Air temperature",
     "Process temperature [K]": "Process temperature",
@@ -82,6 +83,7 @@ def preprocess_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     out["Type"] = out["Type"].map(TYPE_ENCODING)
     out["Power"] = out["Torque"] * out["Rotational speed"] * 2 * math.pi / 60
     return out
+
 
 
 def extract_fault_labels(df: pd.DataFrame) -> pd.Series:

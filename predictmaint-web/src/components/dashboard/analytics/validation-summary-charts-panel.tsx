@@ -1,6 +1,6 @@
 'use client';
 
-import type { AvailabilitySnapshot } from '@/core/types/api';
+import type { ValidationStageSummary } from '@/core/types/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { calcPct } from '@/lib/utils/analytics';
@@ -13,49 +13,53 @@ import {
   Tooltip,
 } from 'recharts';
 
-const MACHINE_COLORS = {
-  operativas: 'var(--color-success)',
-  enMantenimiento: 'var(--color-warning)',
+const STAGE_COLORS = {
+  aprobados: 'var(--color-success)',
+  rechazados: 'var(--color-danger)',
 };
 
-export function AvailabilityPanel({
+export function ValidationStagePiePanel({
+  title,
+  subtitle,
   data,
   isLoading,
 }: {
-  data?: AvailabilitySnapshot;
+  title: string;
+  subtitle: string;
+  data?: ValidationStageSummary;
   isLoading?: boolean;
 }) {
   if (isLoading) {
     return <Skeleton className="h-[360px] w-full" />;
   }
 
-  if (!data) return null;
+  const chartData = data
+    ? [
+        { name: 'Aprobados', value: data.aprobados, key: 'aprobados' as const },
+        { name: 'Rechazados', value: data.rechazados, key: 'rechazados' as const },
+      ].filter((d) => d.value > 0)
+    : [];
 
-  const machineChart = [
-    { name: 'Operativas', value: data.maquinas.operativas, key: 'operativas' },
-    { name: 'En mantenimiento', value: data.maquinas.enMantenimiento, key: 'enMantenimiento' },
-  ].filter((d) => d.value > 0);
-
-  const total = data.maquinas.total;
-  const hasData = total > 0 && machineChart.length > 0;
+  const total = data?.total ?? 0;
+  const hasData = total > 0 && chartData.length > 0;
 
   return (
     <Card className="h-full min-h-[360px]">
       <CardHeader>
-        <CardTitle>Disponibilidad de máquinas</CardTitle>
-        <p className="text-xs text-ink-muted">
-          En mantenimiento = orden pendiente o en progreso
-        </p>
+        <CardTitle>{title}</CardTitle>
+        <p className="text-xs text-ink-muted">{subtitle}</p>
       </CardHeader>
       <CardContent className="space-y-4">
         {!hasData ? (
-          <p className="py-12 text-center text-sm text-ink-muted">Sin máquinas registradas</p>
+          <p className="py-12 text-center text-sm text-ink-muted">
+            Sin validaciones del técnico en el rango seleccionado
+          </p>
         ) : (
           <>
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
                 <Pie
-                  data={machineChart}
+                  data={chartData}
                   dataKey="value"
                   nameKey="name"
                   cx="50%"
@@ -64,11 +68,8 @@ export function AvailabilityPanel({
                   outerRadius={78}
                   paddingAngle={2}
                 >
-                  {machineChart.map((entry) => (
-                    <Cell
-                      key={entry.key}
-                      fill={MACHINE_COLORS[entry.key as keyof typeof MACHINE_COLORS]}
-                    />
+                  {chartData.map((entry) => (
+                    <Cell key={entry.key} fill={STAGE_COLORS[entry.key]} />
                   ))}
                 </Pie>
                 <Tooltip
@@ -96,14 +97,14 @@ export function AvailabilityPanel({
             <div className="space-y-2 border-t border-border-soft pt-3">
               {[
                 {
-                  label: 'Operativas',
-                  count: data.maquinas.operativas,
-                  color: MACHINE_COLORS.operativas,
+                  label: 'Aprobados',
+                  count: data!.aprobados,
+                  color: STAGE_COLORS.aprobados,
                 },
                 {
-                  label: 'En mantenimiento',
-                  count: data.maquinas.enMantenimiento,
-                  color: MACHINE_COLORS.enMantenimiento,
+                  label: 'Rechazados',
+                  count: data!.rechazados,
+                  color: STAGE_COLORS.rechazados,
                 },
               ].map((item) => (
                 <div
@@ -125,9 +126,7 @@ export function AvailabilityPanel({
             </div>
 
             <p className="text-xs text-ink-muted">
-              {data.maquinas.detalleMantenimiento.length > 0
-                ? `En mantenimiento: ${data.maquinas.detalleMantenimiento.join(', ')}`
-                : 'Ninguna máquina con orden activa'}
+              {total} {total === 1 ? 'orden validada' : 'órdenes validadas'} en el rango
             </p>
           </>
         )}
