@@ -22,6 +22,12 @@ import { cn } from '@/lib/utils/cn';
 import { useSystemConfig, useMlModels } from '@/presentation/hooks/useSettings';
 import { EtapaModelo } from '@/core/types';
 import { Activity, Gauge, ShieldCheck, Target } from 'lucide-react';
+import { ExportPdfButton } from '@/components/dashboard/export-pdf-button';
+import {
+  downloadRagRecommendationPdf,
+  downloadS1AnalysisPdf,
+  downloadS2ClassificationPdf,
+} from '@/lib/utils/analysis-pdf';
 
 const TABS = [
   { key: 's1', label: '1 Predicción de Fallo' },
@@ -266,6 +272,12 @@ export function AnalysisView({
               reading={sensorReading}
               data={binary.data ?? undefined}
               isLoading={binary.isLoading}
+              pdfContext={{
+                maquinaId: machineId,
+                orderId: analysisOrder?.id,
+                nivelRiesgo: analysisOrder?.nivelRiesgo,
+              }}
+              umbralFalla={umbralFalla}
             />
           )}
           {tab === 's2' && s1Falla && (
@@ -274,6 +286,11 @@ export function AnalysisView({
               isLoading={multiclass.isLoading}
               tecnico={analysisOrder?.tecnico}
               tecnicoPendiente={s1Falla && !analysisOrder?.tecnicoId}
+              pdfContext={{
+                maquinaId: machineId,
+                orderId: analysisOrder?.id,
+                nivelRiesgo: analysisOrder?.nivelRiesgo,
+              }}
             />
           )}
           {tab === 's3' && s1Falla && s2HasData && (
@@ -282,6 +299,11 @@ export function AnalysisView({
               isLoading={rag.isLoading}
               orderId={analysisOrder?.id ?? null}
               order={analysisOrder}
+              pdfContext={{
+                maquinaId: machineId,
+                orderId: analysisOrder?.id,
+                nivelRiesgo: analysisOrder?.nivelRiesgo,
+              }}
               multiclassMeta={{
                 modeloLider: multiclass.data?.modeloLider ?? null,
                 agreement: multiclass.data?.agreement ?? null,
@@ -304,6 +326,8 @@ function PredictionTab({
   reading,
   data,
   isLoading,
+  pdfContext,
+  umbralFalla,
 }: {
   reading?: SensorReading;
   data?: {
@@ -314,6 +338,8 @@ function PredictionTab({
     consenso: string | null;
   };
   isLoading?: boolean;
+  pdfContext: { maquinaId: string; orderId?: string | null; nivelRiesgo?: string | null };
+  umbralFalla?: number;
 }) {
   if (isLoading) return <Skeleton className="h-[380px] w-full" />;
 
@@ -322,8 +348,29 @@ function PredictionTab({
     data?.confianzaLider ??
     (lider?.probabilidad != null ? lider.probabilidad / 100 : null);
 
+  const canExport = (data?.items?.length ?? 0) > 0;
+
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <ExportPdfButton
+          label="Exportar análisis S-1 (PDF)"
+          disabled={!canExport}
+          onClick={() => {
+            if (!data?.items?.length) return;
+            downloadS1AnalysisPdf({
+              ctx: pdfContext,
+              reading,
+              items: data.items,
+              modeloLider: data.modeloLider,
+              confianzaLider: confianza,
+              consenso: data.consenso,
+              umbralFalla,
+            });
+          }}
+        />
+      </div>
+
       {lider && (
         <div className="rounded-md bg-accent/5 px-4 py-3 text-sm">
           <p className="font-semibold text-ink">
@@ -452,6 +499,7 @@ function ClassificationTab({
   isLoading,
   tecnico,
   tecnicoPendiente,
+  pdfContext,
 }: {
   data?: {
     items: MulticlassPrediction[];
@@ -463,11 +511,13 @@ function ClassificationTab({
   isLoading?: boolean;
   tecnico?: { id: number; nombre: string; iniciales: string } | null;
   tecnicoPendiente?: boolean;
+  pdfContext: { maquinaId: string; orderId?: string | null; nivelRiesgo?: string | null };
 }) {
   if (isLoading) return <Skeleton className="h-[380px] w-full" />;
 
   const lider = data?.items.find((m) => m.esLider);
   const items = data?.items ?? [];
+  const canExport = items.length > 0;
   const tipoPredicho = data?.tipoPredicho ?? lider?.tipoPredicho ?? '—';
   const modeloLider = data?.modeloLider ?? lider?.modelo ?? null;
 
@@ -483,6 +533,26 @@ function ClassificationTab({
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <ExportPdfButton
+          label="Exportar clasificación S-2 (PDF)"
+          disabled={!canExport}
+          onClick={() => {
+            if (!data?.items?.length) return;
+            downloadS2ClassificationPdf({
+              ctx: pdfContext,
+              items: data.items,
+              modeloLider: data.modeloLider,
+              tipoPredicho: data.tipoPredicho,
+              agreement: data.agreement,
+              confianza: data.confianza,
+              tecnico: tecnico ?? undefined,
+              tecnicoPendiente,
+            });
+          }}
+        />
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           icon={FAULT_ICONS[tipoPredicho] ?? Target}
@@ -580,6 +650,7 @@ function RagTab({
   orderId,
   order,
   multiclassMeta,
+  pdfContext,
   onRegenerated,
 }: {
   data?: {
@@ -587,10 +658,12 @@ function RagTab({
     fuentes?: string[];
     estado?: string;
     tipoFallo?: string;
+    escalado?: boolean;
   };
   isLoading?: boolean;
   orderId: string | null;
   order?: Order | null;
+  pdfContext: { maquinaId: string; orderId?: string | null; nivelRiesgo?: string | null };
   multiclassMeta?: {
     modeloLider: string | null;
     agreement: string | null;
@@ -613,11 +686,33 @@ function RagTab({
     multiclassMeta?.agreement ? `Agreement ${multiclassMeta.agreement}` : null,
   ].filter(Boolean);
 
+  const canExport = (data?.acciones?.length ?? 0) > 0 || tipoFallo !== '—';
+
   return (
     <div className="space-y-4">
-      {metaParts.length > 0 && (
-        <p className="text-xs text-accent">{metaParts.join(' • ')}</p>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {metaParts.length > 0 ? (
+          <p className="text-xs text-accent">{metaParts.join(' • ')}</p>
+        ) : (
+          <span />
+        )}
+        <ExportPdfButton
+          label="Exportar recomendación RAG (PDF)"
+          disabled={!canExport}
+          onClick={() => {
+            downloadRagRecommendationPdf({
+              ctx: pdfContext,
+              order,
+              tipoFallo: tipoFallo !== '—' ? tipoFallo : 'RNF',
+              estado: ragEstado,
+              escalado: data?.escalado,
+              acciones: data?.acciones ?? [],
+              fuentes: data?.fuentes,
+              multiclassMeta,
+            });
+          }}
+        />
+      </div>
 
       <div className="grid gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
