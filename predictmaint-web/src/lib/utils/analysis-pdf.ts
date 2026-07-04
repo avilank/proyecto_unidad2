@@ -221,12 +221,11 @@ export function downloadS1AnalysisPdf(input: S1PdfInput): void {
     startY: y,
     margin: { left: 14, right: 14 },
     head: [
-      ['#', 'Modelo', 'Rol', 'Predicción', 'Prob.', 'Accuracy', 'ROC-AUC', 'Precision', 'Recall', 'F1'],
+      ['#', 'Modelo', 'Predicción', 'Prob.', 'Accuracy', 'ROC-AUC', 'Precision', 'Recall', 'F1'],
     ],
     body: sorted.map((p, i) => [
       String(i + 1),
       formatModelLabel(p.modelo),
-      p.esLider ? '★ Líder' : '—',
       p.prediccion.replace(/_/g, ' '),
       fmtPct(p.probabilidad),
       fmtPct(p.accuracy),
@@ -240,13 +239,12 @@ export function downloadS1AnalysisPdf(input: S1PdfInput): void {
     bodyStyles: { fontSize: 7, textColor: C.ink },
     columnStyles: {
       0: { halign: 'center', cellWidth: 8 },
-      2: { halign: 'center', textColor: C.accent },
+      3: { halign: 'right' },
       4: { halign: 'right' },
       5: { halign: 'right' },
-      6: { halign: 'right' },
     },
     didParseCell(data) {
-      if (data.section === 'body' && data.column.index === 3) {
+      if (data.section === 'body' && data.column.index === 2) {
         const val = String(data.cell.raw);
         if (val.includes('FALLA') && !val.includes('SIN')) {
           data.cell.styles.textColor = C.danger;
@@ -254,10 +252,6 @@ export function downloadS1AnalysisPdf(input: S1PdfInput): void {
         } else if (val.includes('SIN')) {
           data.cell.styles.textColor = C.success;
         }
-      }
-      if (data.section === 'body' && data.column.index === 2 && String(data.cell.raw).includes('Líder')) {
-        data.cell.styles.fontStyle = 'bold';
-        data.cell.styles.textColor = C.accent;
       }
     },
   });
@@ -313,12 +307,11 @@ export function downloadS2ClassificationPdf(input: S2PdfInput): void {
     startY: y,
     margin: { left: 14, right: 14 },
     head: [
-      ['#', 'Modelo', 'Rol', 'Tipo pred.', 'HDF', 'PWF', 'TWF', 'OSF', 'RNF', 'Accuracy', 'F1-macro'],
+      ['#', 'Modelo', 'Tipo pred.', 'HDF', 'PWF', 'TWF', 'OSF', 'RNF', 'Accuracy', 'F1-macro'],
     ],
     body: sorted.map((m, i) => [
       String(i + 1),
       formatModelLabel(m.modelo),
-      m.esLider ? '★ Líder' : m.diverge ? 'Diverge' : '—',
       m.tipoPredicho ?? '—',
       fmtPct(m.probHdf),
       fmtPct(m.probPwf),
@@ -333,18 +326,6 @@ export function downloadS2ClassificationPdf(input: S2PdfInput): void {
     bodyStyles: { fontSize: 6.5, textColor: C.ink },
     columnStyles: {
       0: { halign: 'center', cellWidth: 7 },
-      2: { halign: 'center' },
-    },
-    didParseCell(data) {
-      if (data.section === 'body' && data.column.index === 2) {
-        const raw = String(data.cell.raw);
-        if (raw.includes('Líder')) {
-          data.cell.styles.fontStyle = 'bold';
-          data.cell.styles.textColor = C.accent;
-        } else if (raw.includes('Diverge')) {
-          data.cell.styles.textColor = C.warning;
-        }
-      }
     },
   });
 
